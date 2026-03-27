@@ -26,9 +26,9 @@ is a deliberate decision in service of the Two-Week Discipline pillar.
 | 1 | Game State Manager | Core | MVP | Designed | design/gdd/game-state-manager.md | — |
 | 2 | Input System | Core | MVP | Designed | design/gdd/input-system.md | — |
 | 3 | Score & Distance Tracker | Core | MVP | Designed | design/gdd/score-and-distance-tracker.md | — |
-| 4 | Character Renderer | Core | MVP | Not Started | — | Game State Manager |
-| 5 | Environment Renderer | Core | MVP | Not Started | — | Game State Manager |
-| 6 | Camera System | Core | MVP | Not Started | — | Character Renderer |
+| 4 | Character Renderer | Core | MVP | Approved | design/gdd/character-renderer.md | Game State Manager |
+| 5 | Environment Renderer | Core | MVP | Approved | design/gdd/environment-renderer.md | Game State Manager |
+| 6 | Camera System | Core | MVP | Approved | design/gdd/camera-system.md | Character Renderer |
 | 7 | Runner System | Gameplay | MVP | Not Started | — | Input System, Character Renderer, Camera System, Game State Manager |
 | 8 | Obstacle System | Gameplay | MVP | Not Started | — | Runner System, Game State Manager |
 | 9 | Difficulty Curve | Gameplay | v1 Ship | Not Started | — | Obstacle System, Score & Distance Tracker |
@@ -164,9 +164,9 @@ Independent systems at the same layer can be designed in parallel.
 |--------|-------|
 | Total systems identified | 18 |
 | Design docs started | 1 |
-| Design docs reviewed | 0 |
-| Design docs approved | 0 |
-| MVP systems designed | 3 / 8 |
+| Design docs reviewed | 3 |
+| Design docs approved | 3 |
+| MVP systems designed | 6 / 8 |
 | v1 Ship systems designed | 0 / 10 |
 
 ---
