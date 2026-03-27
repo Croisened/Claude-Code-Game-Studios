@@ -29,8 +29,8 @@ is a deliberate decision in service of the Two-Week Discipline pillar.
 | 4 | Character Renderer | Core | MVP | Approved | design/gdd/character-renderer.md | Game State Manager |
 | 5 | Environment Renderer | Core | MVP | Approved | design/gdd/environment-renderer.md | Game State Manager |
 | 6 | Camera System | Core | MVP | Approved | design/gdd/camera-system.md | Character Renderer |
-| 7 | Runner System | Gameplay | MVP | Not Started | — | Input System, Character Renderer, Camera System, Game State Manager |
-| 8 | Obstacle System | Gameplay | MVP | Not Started | — | Runner System, Game State Manager |
+| 7 | Runner System | Gameplay | MVP | Approved | design/gdd/runner-system.md | Input System, Character Renderer, Camera System, Game State Manager |
+| 8 | Obstacle System | Gameplay | MVP | Approved | design/gdd/obstacle-system.md | Runner System, Game State Manager |
 | 9 | Difficulty Curve | Gameplay | v1 Ship | Not Started | — | Obstacle System, Score & Distance Tracker |
 | 10 | Wallet Connection | Web3 | v1 Ship | Not Started | — | Game State Manager |
 | 11 | NFT Ownership Verification | Web3 | v1 Ship | Not Started | — | Wallet Connection |
@@ -164,9 +164,9 @@ Independent systems at the same layer can be designed in parallel.
 |--------|-------|
 | Total systems identified | 18 |
 | Design docs started | 1 |
-| Design docs reviewed | 3 |
-| Design docs approved | 3 |
-| MVP systems designed | 6 / 8 |
+| Design docs reviewed | 5 |
+| Design docs approved | 5 |
+| MVP systems designed | 8 / 8 |
 | v1 Ship systems designed | 0 / 10 |
 
 ---
