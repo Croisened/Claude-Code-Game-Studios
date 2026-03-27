@@ -5,14 +5,15 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Technology Stack
 
-- **Engine**: [CHOOSE: Godot 4 / Unity / Unreal Engine 5]
-- **Language**: [CHOOSE: GDScript / C# / C++ / Blueprint]
+- **Engine**: Three.js r168+ + enable3d (web 3D rendering + Rapier physics + game loop)
+- **Language**: TypeScript (strict mode, browser target)
 - **Version Control**: Git with trunk-based development
-- **Build System**: [SPECIFY after choosing engine]
-- **Asset Pipeline**: [SPECIFY after choosing engine]
+- **Build System**: Vite
+- **Asset Pipeline**: GLB models (Three.js GLTFLoader) + PNG texture sets
 
-> **Note**: Engine-specialist agents exist for Godot, Unity, and Unreal with
-> dedicated sub-specialists. Use the set matching your engine.
+> **Note**: This project uses Three.js (not Godot/Unity/Unreal). Engine-specialist
+> subagents (godot-specialist, unity-specialist, etc.) do not apply. Use
+> `gameplay-programmer` and `engine-programmer` agents for implementation work.
 
 ## Project Structure
 
@@ -20,7 +21,7 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Engine Version Reference
 
-@docs/engine-reference/godot/VERSION.md
+@docs/engine-reference/three-js/VERSION.md
 
 ## Technical Preferences
 
