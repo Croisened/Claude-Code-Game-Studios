@@ -25,7 +25,7 @@ is a deliberate decision in service of the Two-Week Discipline pillar.
 |---|-------------|----------|----------|--------|------------|------------|
 | 1 | Game State Manager | Core | MVP | Designed | design/gdd/game-state-manager.md | — |
 | 2 | Input System | Core | MVP | Designed | design/gdd/input-system.md | — |
-| 3 | Score & Distance Tracker | Core | MVP | Not Started | — | — |
+| 3 | Score & Distance Tracker | Core | MVP | Designed | design/gdd/score-and-distance-tracker.md | — |
 | 4 | Character Renderer | Core | MVP | Not Started | — | Game State Manager |
 | 5 | Environment Renderer | Core | MVP | Not Started | — | Game State Manager |
 | 6 | Camera System | Core | MVP | Not Started | — | Character Renderer |
@@ -166,7 +166,7 @@ Independent systems at the same layer can be designed in parallel.
 | Design docs started | 1 |
 | Design docs reviewed | 0 |
 | Design docs approved | 0 |
-| MVP systems designed | 2 / 8 |
+| MVP systems designed | 3 / 8 |
 | v1 Ship systems designed | 0 / 10 |
 
 ---
