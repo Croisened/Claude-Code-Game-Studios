@@ -262,6 +262,6 @@ None. Obstacle System produces no UI elements.
 | Question | Owner | Target Resolution | Resolution |
 |----------|-------|------------------|------------|
 | What are the v1 obstacle types beyond Barrier and Drone? (Game concept mentions drones, barriers, collapsing structures, neon signage) | Designer | v1 design sprint | Unresolved — minimum 3–5 types; each should require a distinct player response (e.g., 2-lane barrier forces lane change) |
-| Does the Drone's 0.1-unit clearance produce false-positive Rapier collisions in practice? | Developer | Implementation spike | Unresolved — if yes, raise drone `centerY` to 1.3 (new clearance: 0.2 units) |
+| Does the Drone's 0.1-unit clearance produce false-positive Rapier collisions in practice? | Developer | Implementation spike | **Partially resolved** — prototype playtesting confirmed the tight clearance feels like a satisfying committed slide, not unfair. Keep `centerY=1.25`. If Rapier produces false positives, raise to 1.3. |
 | Should obstacle type selection use weighted probability rather than uniform random? (e.g., Barriers more common at low speed; Drones introduced after N meters) | Designer | Difficulty Curve GDD | Deferred to v1 — uniform distribution is sufficient for MVP prototype testing |
 | Should MVP obstacles use distinct debug colors (e.g., magenta boxes) to aid playtesting, replaced in v1 art pass? | Developer | MVP build decision | Recommended: yes — helps distinguish obstacles from environment geometry during development |

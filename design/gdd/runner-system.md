@@ -137,7 +137,7 @@ The MVP ramp is disabled automatically when `mvpSpeedRampRate = 0`.
 | `mvpSpeedRampRate` | Speed increase per second (units/s²) | 0.5 |
 | `maxSpeed` | Speed cap (units/s) | 25 |
 | `jumpForce` | Upward impulse magnitude | 12 |
-| `gravity` | Rapier world gravity (Y axis, positive = down) | 20 |
+| `gravity` | Rapier world gravity (Y axis, positive = down) | 30 |
 | `groundY` | Robot floor Y position | 0 |
 | `landingEpsilon` | Landing detection tolerance (units) | 0.05 |
 | `slideDuration` | Time crouched before auto-stand (ms) | 600 |
@@ -146,8 +146,8 @@ The MVP ramp is disabled automatically when `mvpSpeedRampRate = 0`.
 
 **Estimates at defaults:**
 ```
-peakHeight ≈ 12² / (2 × 20)  = 3.6 units
-airTime    ≈ 2 × 12 / 20     = 1.2 seconds
+peakHeight ≈ 12² / (2 × 30)  = 2.4 units  (foot-level clearance; barrier top = 1.0)
+airTime    ≈ 2 × 12 / 30     = 0.8 seconds  (snappier than 1.2s prototype; less floaty)
 
 Speed at 60s of run: 8 + 0.5×60 = 38 → capped at 25 units/s
 Time to reach maxSpeed:          (25 − 8) / 0.5 = 34 seconds of run time
@@ -203,7 +203,7 @@ Time to reach maxSpeed:          (25 − 8) / 0.5 = 34 seconds of run time
 | `mvpSpeedRampRate` | 0.5 units/s² | 0 – 2 | How quickly speed increases; 0 = constant speed (testing mode) | > 2: reaches maxSpeed in under 9 seconds; difficulty spikes too fast |
 | `maxSpeed` | 25 units/s | 15 – 40 | Peak speed the run reaches | < 15: game never gets truly challenging; > 40: obstacle reaction time drops below ~100ms at standard look-ahead |
 | `jumpForce` | 12 | 6 – 18 | Jump height and air time | < 6: robot barely leaves ground; > 18: air time exceeds 2.4s, jump becomes dominant avoidance tool |
-| `gravity` | 20 | 10 – 30 | Fall speed; pairs with `jumpForce` | Too low + high jumpForce = floaty; too high = snappy but arc feels unnatural |
+| `gravity` | 30 | 15 – 40 | Fall speed; pairs with `jumpForce` | Too low + high jumpForce = floaty (prototype at 20 confirmed this); too high = snappy but arc feels unnatural |
 | `slideDuration` | 600ms | 300 – 1200ms | How long crouched hitbox is active | < 300ms: slide feels unresponsive; > 1200ms: player locked out of jump for too long |
 | `standingCollider` | 1.0 × 1.8 × 0.8 | — | Standing hitbox W×H×D | Too large: unfair collisions; too small: obstacles visually pass through |
 | `crouchedCollider` | 1.0 × 0.9 × 0.8 | — | Crouched hitbox W×H×D | `crouchedHeight` must be less than `standingHeight` or slide has no effect |
@@ -278,4 +278,4 @@ is owned by the Score & Distance Tracker and HUD systems.
 | What is the Rapier ground plane? (Static physics body vs. pure code landing detection) | Developer | Implementation spike | Unresolved — static ground body is simpler and prevents fall-through edge cases |
 | How does Runner System distinguish obstacle colliders from other physics bodies (e.g., ground)? | Developer | Obstacle System GDD | Provisional: Rapier collision groups; obstacles assigned `OBSTACLE_GROUP`; robot collider reacts only to `OBSTACLE_GROUP` for `collisionDetected` |
 | Do Jump and Slide animations need separate AnimationMixer channels, or does single mixer with fast crossfades (50ms) suffice? | Developer | CR GDD update + implementation | Unresolved — single mixer is simpler; evaluate during animation authoring |
-| At `maxSpeed` (25 units/s), does the default jump arc (3.6 units height, 1.2s air time) feel fair for obstacle clearance? | Designer | MVP playtest | Unresolved — test empirically; adjust `jumpForce`/`gravity` ratio if needed |
+| At `maxSpeed` (25 units/s), does the default jump arc (3.6 units height, 1.2s air time) feel fair for obstacle clearance? | Designer | MVP playtest | **Resolved** — prototype playtesting confirmed 1.2s air time (gravity=20) is too floaty. Updated to gravity=30, giving 0.8s air time and 2.4-unit peak. Re-verify in production with Rapier physics. |
