@@ -209,8 +209,8 @@ window.addEventListener('keydown', (e) => {
   }
 
   // Lane change — instant snap
-  if (e.code === 'ArrowLeft'  && laneIndex > 0) laneIndex--;
-  if (e.code === 'ArrowRight' && laneIndex < 2) laneIndex++;
+  if ((e.code === 'ArrowLeft'  || e.code === 'KeyA') && laneIndex > 0) laneIndex--;
+  if ((e.code === 'ArrowRight' || e.code === 'KeyD') && laneIndex < 2) laneIndex++;
 
   // Jump
   if ((e.code === 'ArrowUp' || e.code === 'Space') && !isJumping) {
@@ -248,7 +248,7 @@ controls.style.cssText = `
   color: #334; font: 13px 'Courier New', monospace; text-align: center;
   pointer-events: none;
 `;
-controls.innerHTML = '← → &nbsp; Lane change &nbsp;|&nbsp; ↑ / SPACE &nbsp; Jump &nbsp;|&nbsp; ↓ / S &nbsp; Slide';
+controls.innerHTML = '← A / → D &nbsp; Lane &nbsp;|&nbsp; ↑ / SPACE &nbsp; Jump &nbsp;|&nbsp; ↓ / S &nbsp; Slide';
 document.body.appendChild(controls);
 
 const deathScreen = document.createElement('div');

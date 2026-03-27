@@ -18,7 +18,7 @@ Open `http://localhost:5173` in Chrome or Firefox.
 
 | Key | Action |
 |-----|--------|
-| ← → | Lane change (instant snap) |
+| ← → / A D | Lane change (instant snap) |
 | ↑ / Space | Jump |
 | ↓ / S | Slide |
 | R / Enter / Space | Restart (after death) |
