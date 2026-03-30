@@ -9,6 +9,8 @@ import { gsm, GameState } from './core/game-state-manager';
 import { CharacterRenderer } from './core/character-renderer';
 import { EnvironmentRenderer } from './core/environment-renderer';
 import { CameraSystem } from './core/camera-system';
+import { RunnerSystem } from './core/runner-system';
+import { inputSystem } from './core/input-system';
 
 async function boot(): Promise<void> {
   // ── Rapier ────────────────────────────────────────────────────────────────
@@ -48,6 +50,17 @@ async function boot(): Promise<void> {
     characterRenderer.robotObject3D,
     window.innerWidth / window.innerHeight,
   );
+  const runnerSystem        = new RunnerSystem(
+    characterRenderer.robotObject3D,
+    environmentRenderer,
+    gsm,
+    inputSystem,
+  );
+
+  // ── Collision → Death ─────────────────────────────────────────────────────
+  runnerSystem.onCollisionDetected(() => {
+    gsm.transition(GameState.Dead);
+  });
 
   // ── Resize ────────────────────────────────────────────────────────────────
   window.addEventListener('resize', () => {
@@ -62,6 +75,7 @@ async function boot(): Promise<void> {
     requestAnimationFrame(animate);
     const delta = time - lastTime;
     lastTime = time;
+    runnerSystem.update(delta);
     characterRenderer.update(delta);
     environmentRenderer.update(delta);
     cameraSystem.update(delta);
