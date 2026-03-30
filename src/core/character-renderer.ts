@@ -101,7 +101,9 @@ export class CharacterRenderer {
    */
   applyTexture(texture: THREE.Texture | null): void {
     if (texture === null) {
-      console.warn('[CharacterRenderer] applyTexture called with null — keeping current texture');
+      if (import.meta.env.DEV) {
+        console.warn('[CharacterRenderer] applyTexture called with null — keeping current texture');
+      }
       return;
     }
     texture.colorSpace = THREE.SRGBColorSpace;

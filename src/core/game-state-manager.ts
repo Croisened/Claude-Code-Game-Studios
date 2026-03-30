@@ -30,7 +30,7 @@ export type StateChangedListener = (event: StateChangedEvent) => void;
 // Derived directly from the GDD transition table. Any pair not listed here
 // is invalid and will be silently rejected.
 
-const VALID_TRANSITIONS: ReadonlyMap<GameState, ReadonlySet<GameState>> = new Map([
+const VALID_TRANSITIONS = new Map<GameState, ReadonlySet<GameState>>([
   [GameState.Loading,     new Set([GameState.MainMenu])],
   [GameState.MainMenu,    new Set([GameState.Running, GameState.Leaderboard])],
   [GameState.Running,     new Set([GameState.Dead])],

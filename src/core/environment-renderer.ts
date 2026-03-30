@@ -33,6 +33,11 @@ export class EnvironmentRenderer {
   private readonly _initialZ: number[];
   private readonly _gsmListener: (e: StateChangedEvent) => void;
 
+  // Shared materials — created once, reused across all chunks.
+  private readonly _floorMat    = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  private readonly _dividerMat  = new THREE.MeshStandardMaterial({ color: 0x444444 });
+  private readonly _buildingMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
+
   constructor(
     private readonly _scene:  THREE.Scene,
     private readonly _gsm:    GameStateManager,
@@ -158,18 +163,17 @@ export class EnvironmentRenderer {
     // PlaneGeometry is on the XY plane by default — rotate to lay it flat.
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(laneWidth, chunkLength),
-      new THREE.MeshStandardMaterial({ color: 0x222222 }),
+      this._floorMat,
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     group.add(floor);
 
     // ── Lane dividers ────────────────────────────────────────────────────────
-    const dividerMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
     for (const x of [-laneSpacing, laneSpacing]) {
       const divider = new THREE.Mesh(
         new THREE.BoxGeometry(0.1, 0.05, chunkLength),
-        dividerMat,
+        this._dividerMat,
       );
       divider.position.set(x, 0.025, 0);
       group.add(divider);
@@ -178,7 +182,6 @@ export class EnvironmentRenderer {
     // ── Flanking placeholder buildings ───────────────────────────────────────
     // Two buildings per side — heights vary by index for minimal visual interest.
     // Replace entirely in v1 art pass.
-    const buildingMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
     const buildingConfigs = [
       { w: 2.5, h: 4 + (index % 3) * 2, d: chunkLength * 0.9 },
       { w: 1.5, h: 6 + (index % 2) * 3, d: chunkLength * 0.5 },
@@ -189,7 +192,7 @@ export class EnvironmentRenderer {
       for (const bc of buildingConfigs) {
         const building = new THREE.Mesh(
           new THREE.BoxGeometry(bc.w, bc.h, bc.d),
-          buildingMat,
+          this._buildingMat,
         );
         building.position.set(xOffset, bc.h / 2, 0);
         group.add(building);
