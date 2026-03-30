@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robo Rhapsody — Neon Fugitive: Storyboard</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&family=Orbitron:wght@700;900&display=swap');
+
+    :root {
+      --bg:        #07070d;
+      --bg-panel:  #0c0c18;
+      --bg-panel2: #0f0f1e;
+      --cyan:      #00f0ff;
+      --violet:    #b44fff;
+      --orange:    #ff6b1a;
+      --yellow:    #f0ff00;
+      --red:       #ff2244;
+      --dim:       #3a3a5c;
+      --text:      #c8c8e8;
+      --text-dim:  #6666aa;
+      --mono:      'Share Tech Mono', monospace;
+      --head:      'Orbitron', sans-serif;
+      --body:      'Rajdhani', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 14px;
+      min-height: 100vh;
+      padding: 40px 32px 60px;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 44px;
+      position: relative;
+    }
+
+    .header-rule {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan), var(--violet), transparent);
+      margin-bottom: 24px;
+    }
+
+    .title-eyebrow {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.3em;
+      color: var(--cyan);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      font-family: var(--head);
+      font-size: clamp(28px, 4vw, 52px);
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      line-height: 1;
+      background: linear-gradient(135deg, #fff 0%, var(--cyan) 40%, var(--violet) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 6px;
+    }
+
+    .title-sub {
+      font-family: var(--head);
+      font-size: clamp(14px, 2vw, 22px);
+      font-weight: 700;
+      letter-spacing: 0.25em;
+      color: var(--orange);
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    .header-meta {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 0.15em;
+    }
+
+    .header-rule-bottom {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--violet), var(--cyan), transparent);
+      margin-top: 24px;
+    }
+
+    /* ── GRID ────────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ── PANEL ───────────────────────────────────────────── */
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--dim);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* corner accents */
+    .panel::before,
+    .panel::after {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      z-index: 2;
+    }
+    .panel::before {
+      top: -1px; left: -1px;
+      border-top: 2px solid var(--accent);
+      border-left: 2px solid var(--accent);
+    }
+    .panel::after {
+      bottom: -1px; right: -1px;
+      border-bottom: 2px solid var(--accent);
+      border-right: 2px solid var(--accent);
+    }
+
+    /* per-panel accent colours */
+    .panel:nth-child(1) { --accent: var(--cyan);   --num-color: var(--cyan);   }
+    .panel:nth-child(2) { --accent: var(--violet);  --num-color: var(--violet); }
+    .panel:nth-child(3) { --accent: var(--orange);  --num-color: var(--orange); }
+    .panel:nth-child(4) { --accent: var(--red);     --num-color: var(--red);    }
+    .panel:nth-child(5) { --accent: var(--yellow);  --num-color: var(--yellow); }
+    .panel:nth-child(6) { --accent: var(--cyan);    --num-color: var(--cyan);   }
+
+    /* ── SCENE ILLUSTRATION ──────────────────────────────── */
+    .scene {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: var(--bg-panel2);
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    /* shared lane floor perspective */
+    .scene .lane {
+      position: absolute;
+      bottom: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 38%;
+      height: 55%;
+      background: linear-gradient(to top, #1a1a2e 0%, transparent 100%);
+      clip-path: polygon(15% 100%, 85% 100%, 65% 0%, 35% 0%);
+    }
+    .scene .lane::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to top,
+        transparent 0px,
+        transparent 8px,
+        rgba(0,240,255,0.06) 8px,
+        rgba(0,240,255,0.06) 9px
+      );
+    }
+
+    /* ── PANEL 1: The City That Hunts ───────────────────── */
+    .scene-1 {
+      background: radial-gradient(ellipse at 50% 120%, #0a0a20 0%, #050510 100%);
+    }
+    .scene-1 .sky-glow {
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 55%;
+      background: linear-gradient(180deg, rgba(0,80,120,0.4) 0%, transparent 100%);
+    }
+    .scene-1 .tower { position: absolute; bottom: 30%; background: #0d0d22; }
+    .scene-1 .tower-l1 { left: 0; width: 18%; height: 80%; border-right: 1px solid rgba(0,240,255,0.15); }
+    .scene-1 .tower-l2 { left: 15%; width: 12%; height: 65%; border-right: 1px solid rgba(180,79,255,0.1); }
+    .scene-1 .tower-r1 { right: 0; width: 18%; height: 75%; border-left: 1px solid rgba(0,240,255,0.15); }
+    .scene-1 .tower-r2 { right: 13%; width: 14%; height: 60%; border-left: 1px solid rgba(180,79,255,0.1); }
+    .scene-1 .neon-h { position: absolute; height: 2px; background: currentColor; opacity: 0.5; }
+    .scene-1 .nh1 { top: 28%; left: 0%; width: 16%; color: var(--cyan); }
+    .scene-1 .nh2 { top: 42%; right: 0%; width: 14%; color: var(--violet); }
+    .scene-1 .nh3 { top: 20%; left: 14%; width: 10%; color: var(--orange); }
+    .scene-1 .drone { position: absolute; width: 10px; height: 5px; background: var(--red); border-radius: 2px; opacity: 0.7; }
+    .scene-1 .drone::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 1px; background: var(--red); opacity: 0.3; }
+    .scene-1 .d1 { top: 35%; left: 22%; }
+    .scene-1 .d2 { top: 30%; right: 25%; }
+    .scene-1 .rain { position: absolute; inset: 0; background: repeating-linear-gradient(173deg, transparent 0px, transparent 3px, rgba(180,200,255,0.04) 3px, rgba(180,200,255,0.04) 4px); }
+    .scene-1 .vanish-glow { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); width: 60px; height: 60px; background: radial-gradient(circle, rgba(0,240,255,0.15) 0%, transparent 70%); border-radius: 50%; }
+
+    /* ── PANEL 2: This One Is Yours ─────────────────────── */
+    .scene-2 {
+      background: radial-gradient(ellipse at 50% 60%, #1a0a2e 0%, #0a0518 100%);
+    }
+    .scene-2 .bg-grid {
+      position: absolute; inset: 0;
+      background:
+        linear-gradient(rgba(180,79,255,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(180,79,255,0.05) 1px, transparent 1px);
+      background-size: 30px 30px;
+    }
+    .scene-2 .halo {
+      position: absolute; top: 10%; left: 50%; transform: translateX(-50%);
+      width: 55%; height: 75%;
+      background: radial-gradient(ellipse at 50% 40%, rgba(180,79,255,0.18) 0%, transparent 70%);
+    }
+    .scene-2 .robot-body {
+      position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%);
+      width: 22%; aspect-ratio: 1/1.8;
+      background: linear-gradient(160deg, #2a1a4a 0%, #1a0f2e 60%, #0d0820 100%);
+      border: 1px solid rgba(180,79,255,0.4);
+      border-radius: 3px 3px 1px 1px;
+    }
+    .scene-2 .robot-head {
+      position: absolute; bottom: calc(20% + 21%); left: 50%; transform: translateX(-50%);
+      width: 14%; aspect-ratio: 1/0.8;
+      background: #1a0f2e;
+      border: 1px solid rgba(180,79,255,0.5);
+      border-radius: 2px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .scene-2 .robot-eye {
+      width: 50%; height: 30%;
+      background: var(--violet);
+      border-radius: 2px;
+      box-shadow: 0 0 8px var(--violet), 0 0 20px rgba(180,79,255,0.5);
+      opacity: 0.9;
+    }
+    .scene-2 .reflect {
+      position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 40%; height: 18%;
+      background: linear-gradient(to bottom, rgba(180,79,255,0.08), transparent);
+      filter: blur(2px);
+    }
+    .scene-2 .token-id {
+      position: absolute; bottom: 8%; right: 6%;
+      font-family: var(--mono); font-size: 9px; color: rgba(180,79,255,0.5);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── PANEL 3: The First Stride ───────────────────────── */
+    .scene-3 {
+      background: linear-gradient(160deg, #1a0a08 0%, #0a0510 100%);
+    }
+    .scene-3 .speed-lines {
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        92deg,
+        transparent 0px, transparent 18px,
+        rgba(255,107,26,0.04) 18px, rgba(255,107,26,0.04) 19px
+      );
+    }
+    .scene-3 .floor {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 35%;
+      background: linear-gradient(to top, #1a0f08 0%, transparent 100%);
+    }
+    .scene-3 .neon-sign { position: absolute; height: 3px; border-radius: 1px; opacity: 0.7; }
+    .scene-3 .ns1 { top: 25%; left: -5%; width: 35%; background: var(--orange); transform: skewX(-15deg); }
+    .scene-3 .ns2 { top: 38%; right: -5%; width: 28%; background: var(--cyan); transform: skewX(-15deg); }
+    .scene-3 .ns3 { top: 18%; left: 5%; width: 18%; background: var(--violet); transform: skewX(-15deg); }
+    .scene-3 .robot-run {
+      position: absolute; bottom: 32%; left: 44%;
+      width: 14%; aspect-ratio: 1/2;
+      background: linear-gradient(160deg, #3a1a08 0%, #1f0d05 100%);
+      border: 1px solid rgba(255,107,26,0.3);
+      border-radius: 3px 3px 0 0;
+      transform: skewX(-3deg);
+    }
+    .scene-3 .robot-run-head {
+      position: absolute; bottom: calc(32% + 21%); left: 44.5%;
+      width: 10%; aspect-ratio: 1/0.8;
+      background: #1f0d05;
+      border: 1px solid rgba(255,107,26,0.4);
+      border-radius: 2px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .scene-3 .robot-run-eye {
+      width: 55%; height: 25%;
+      background: var(--orange);
+      border-radius: 1px;
+      box-shadow: 0 0 6px var(--orange);
+    }
+    .scene-3 .motion-blur {
+      position: absolute; bottom: 32%; left: 0; right: 56%;
+      height: 40%;
+      background: linear-gradient(90deg, transparent, rgba(255,107,26,0.06));
+    }
+    .scene-3 .hud-dist {
+      position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
+      font-family: var(--mono); font-size: 11px; color: var(--cyan);
+      letter-spacing: 0.15em; text-shadow: 0 0 8px var(--cyan);
+    }
+
+    /* ── PANEL 4: The City Responds ──────────────────────── */
+    .scene-4 {
+      background: radial-gradient(ellipse at 50% 30%, #200808 0%, #080510 100%);
+    }
+    .scene-4 .strobe {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(255,34,68,0.12) 0%, transparent 60%);
+    }
+    .scene-4 .drone-enemy {
+      position: absolute;
+      width: 16%; aspect-ratio: 2/1;
+      background: #1a0808;
+      border: 1px solid rgba(255,34,68,0.6);
+      border-radius: 2px;
+    }
+    .scene-4 .drone-enemy::after {
+      content: '';
+      position: absolute; top: 50%; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,34,68,0.8), transparent);
+    }
+    .scene-4 .de1 { top: 22%; right: 10%; transform: rotate(-8deg); }
+    .scene-4 .de2 { top: 40%; left: 5%; transform: rotate(5deg); }
+    .scene-4 .barrier {
+      position: absolute; height: 3px; background: var(--red); border-radius: 1px;
+      box-shadow: 0 0 8px var(--red), 0 0 20px rgba(255,34,68,0.4);
+    }
+    .scene-4 .b1 { bottom: 42%; left: 0%; width: 30%; opacity: 0.9; }
+    .scene-4 .b2 { bottom: 38%; right: 0%; width: 28%; opacity: 0.8; }
+    .scene-4 .alert-light { position: absolute; border-radius: 50%; opacity: 0.6; }
+    .scene-4 .al1 { top: 5%; left: 25%; width: 8px; height: 8px; background: var(--red); box-shadow: 0 0 12px var(--red); }
+    .scene-4 .al2 { top: 5%; right: 30%; width: 8px; height: 8px; background: var(--red); box-shadow: 0 0 12px var(--red); }
+    .scene-4 .robot-chase {
+      position: absolute; bottom: 28%; left: 42%;
+      width: 14%; aspect-ratio: 1/2;
+      background: linear-gradient(160deg, #2a1a08 0%, #1a0f05 100%);
+      border: 1px solid rgba(255,107,26,0.5);
+      border-radius: 3px 3px 0 0;
+    }
+    .scene-4 .hud-dist {
+      position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
+      font-family: var(--mono); font-size: 11px; color: var(--red);
+      letter-spacing: 0.15em; text-shadow: 0 0 8px var(--red);
+    }
+
+    /* ── PANEL 5: The City Catches Up ────────────────────── */
+    .scene-5 {
+      background: radial-gradient(ellipse at 50% 50%, #181008 0%, #060406 100%);
+    }
+    .scene-5 .impact-flash {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 50%, rgba(240,255,0,0.08) 0%, transparent 60%);
+    }
+    .scene-5 .robot-fallen {
+      position: absolute; bottom: 28%; left: 50%; transform: translateX(-50%) rotate(-85deg);
+      width: 20%; aspect-ratio: 1/2;
+      background: linear-gradient(160deg, #2a1a05 0%, #0f0803 100%);
+      border: 1px solid rgba(240,255,0,0.25);
+      border-radius: 3px;
+    }
+    .scene-5 .robot-fallen-head {
+      position: absolute; bottom: 26%; left: 28%;
+      width: 12%; aspect-ratio: 1/0.8;
+      background: #0f0803;
+      border: 1px solid rgba(240,255,0,0.2);
+      border-radius: 2px;
+    }
+    .scene-5 .spark { position: absolute; border-radius: 50%; }
+    .scene-5 .sp1 { bottom: 32%; left: 44%; width: 4px; height: 4px; background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+    .scene-5 .sp2 { bottom: 35%; left: 54%; width: 3px; height: 3px; background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+    .scene-5 .sp3 { bottom: 30%; left: 60%; width: 2px; height: 2px; background: var(--yellow); box-shadow: 0 0 4px var(--yellow); }
+    .scene-5 .reflect-pool {
+      position: absolute; bottom: 22%; left: 25%; right: 25%; height: 6%;
+      background: linear-gradient(to bottom, rgba(240,255,0,0.05), transparent);
+      filter: blur(3px);
+    }
+    .scene-5 .city-scroll {
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        90deg,
+        transparent 0px, transparent 40px,
+        rgba(0,240,255,0.02) 40px, rgba(0,240,255,0.02) 41px
+      );
+    }
+    .scene-5 .silence-label {
+      position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
+      font-family: var(--mono); font-size: 9px; color: rgba(200,200,232,0.2);
+      letter-spacing: 0.3em; text-transform: uppercase;
+    }
+
+    /* ── PANEL 6: Run Again ──────────────────────────────── */
+    .scene-6 {
+      background: radial-gradient(ellipse at 30% 50%, #0a0a20 0%, #050510 100%);
+    }
+    .scene-6 .ghost-robot {
+      position: absolute; bottom: 5%; left: 5%; top: 5%;
+      width: 40%;
+      background: linear-gradient(180deg, rgba(0,240,255,0.04) 0%, rgba(0,240,255,0.01) 100%);
+      border-right: 1px solid rgba(0,240,255,0.08);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12%;
+    }
+    .scene-6 .ghost-body {
+      width: 38%; aspect-ratio: 1/1.8;
+      background: rgba(0,240,255,0.04);
+      border: 1px solid rgba(0,240,255,0.1);
+      border-radius: 2px;
+      transform: rotate(-5deg);
+    }
+    .scene-6 .score-panel {
+      position: absolute; top: 0; right: 0; bottom: 0; left: 42%;
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 0 8%;
+      gap: 10px;
+    }
+    .scene-6 .score-dist {
+      font-family: var(--head); font-size: 18px; font-weight: 900;
+      color: #fff; letter-spacing: 0.05em; line-height: 1;
+    }
+    .scene-6 .score-dist span { font-size: 11px; display: block; color: var(--text-dim); font-family: var(--mono); letter-spacing: 0.2em; margin-bottom: 2px; }
+    .scene-6 .score-best {
+      font-family: var(--head); font-size: 13px; font-weight: 700;
+      color: var(--text-dim); letter-spacing: 0.05em;
+    }
+    .scene-6 .score-best span { color: var(--cyan); }
+    .scene-6 .score-token {
+      font-family: var(--mono); font-size: 10px; color: var(--violet);
+      letter-spacing: 0.2em;
+    }
+    .scene-6 .btn-run {
+      margin-top: 8px;
+      padding: 6px 12px;
+      border: 1px solid var(--cyan);
+      background: rgba(0,240,255,0.08);
+      color: var(--cyan);
+      font-family: var(--head); font-size: 11px; font-weight: 700;
+      letter-spacing: 0.15em;
+      text-align: center;
+      box-shadow: 0 0 12px rgba(0,240,255,0.2), inset 0 0 12px rgba(0,240,255,0.05);
+    }
+    .scene-6 .neon-bleed {
+      position: absolute; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse at 0% 50%, rgba(0,240,255,0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 50%, rgba(180,79,255,0.04) 0%, transparent 50%);
+    }
+
+    /* ── PANEL BODY ──────────────────────────────────────── */
+    .panel-body {
+      padding: 14px 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex: 1;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      border-bottom: 1px solid var(--dim);
+      padding-bottom: 10px;
+    }
+
+    .panel-num {
+      font-family: var(--head);
+      font-size: 28px;
+      font-weight: 900;
+      color: var(--num-color);
+      line-height: 1;
+      opacity: 0.9;
+      text-shadow: 0 0 20px currentColor;
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      font-family: var(--head);
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #fff;
+      line-height: 1.2;
+    }
+
+    .panel-section-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.25em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+
+    .panel-visual {
+      font-family: var(--body);
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--text);
+      font-weight: 400;
+    }
+
+    .panel-beat {
+      font-family: var(--body);
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: var(--text-dim);
+      font-style: italic;
+      font-weight: 600;
+      border-left: 2px solid var(--accent);
+      padding-left: 10px;
+    }
+
+    /* ── FOOTER ──────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      margin-top: 44px;
+    }
+
+    .footer-rule {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan), var(--violet), transparent);
+      margin-bottom: 20px;
+    }
+
+    .footer-text {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.2em;
+    }
+
+    /* ── PRINT STYLES ────────────────────────────────────── */
+    @media print {
+      body { padding: 20px; }
+      .grid { gap: 16px; }
+    }
+
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-rule"></div>
+    <div class="title-eyebrow">Storyboard &mdash; Pre-Production Draft &mdash; 2026-03-30</div>
+    <h1>Robo Rhapsody</h1>
+    <div class="title-sub">Neon Fugitive</div>
+    <div class="header-meta">6-PANEL EMOTIONAL ARC &nbsp;/&nbsp; VISUAL BRIEF &nbsp;/&nbsp; NEOTROPOLIS</div>
+    <div class="header-rule-bottom"></div>
+  </header>
+
+  <!-- PANELS -->
+  <div class="grid">
+
+    <!-- PANEL 1 -->
+    <div class="panel">
+      <div class="scene scene-1">
+        <div class="sky-glow"></div>
+        <div class="tower tower-l1"></div>
+        <div class="tower tower-l2"></div>
+        <div class="tower tower-r1"></div>
+        <div class="tower tower-r2"></div>
+        <div class="lane"></div>
+        <div class="vanish-glow"></div>
+        <div class="neon-h nh1"></div>
+        <div class="neon-h nh2"></div>
+        <div class="neon-h nh3"></div>
+        <div class="drone d1"></div>
+        <div class="drone d2"></div>
+        <div class="rain"></div>
+      </div>
+      <div class="panel-body">
+        <div class="panel-header">
+          <div class="panel-num">01</div>
+          <div class="panel-title">The City That Hunts</div>
+        </div>
+        <div>
+          <div class="panel-section-label">Visual</div>
+          <div class="panel-visual">Low-angle wide shot at street level. The run corridor stretches deep into Z-axis haze. Corporate towers flank both sides — surveillance cameras on every ledge, enforcement drones hovering dormant in the fog. Cool blue and acid yellow neon. Rain streaks diagonal. Wet chrome lane surface. No robot yet. The city breathes.</div>
+        </div>
+        <div class="panel-beat">Neotropolis is alive, hostile, and watching. The player understands the stakes before they see the protagonist.</div>
+      </div>
+    </div>
+
+    <!-- PANEL 2 -->
+    <div class="panel">
+      <div class="scene scene-2">
+        <div class="bg-grid"></div>
+        <div class="halo"></div>
+        <div class="lane"></div>
+        <div class="robot-body"></div>
+        <div class="robot-head"><div class="robot-eye"></div></div>
+        <div class="reflect"></div>
+        <div class="token-id">RR #042</div>
+      </div>
+      <div class="panel-body">
+        <div class="panel-header">
+          <div class="panel-num">02</div>
+          <div class="panel-title">This One Is Yours</div>
+        </div>
+        <div>
+          <div class="panel-section-label">Visual</div>
+          <div class="panel-visual">Medium shot, three-quarter from behind. The robot steps into frame — idle stance, upright, briefly still. Humanoid mech: geometric torso, angular limbs, wide-aperture optical sensor. Its texture set is vivid and specific — one robot out of ninety. Violet and orange neon halos its silhouette. Token ID visible as a faint HUD watermark: RR #042.</div>
+        </div>
+        <div class="panel-beat">The robot is specific. It is <em>this</em> one — and the player recognizes it as theirs. Identity First lands.</div>
+      </div>
+    </div>
+
+    <!-- PANEL 3 -->
+    <div class="panel">
+      <div class="scene scene-3">
+        <div class="speed-lines"></div>
+        <div class="floor"></div>
+        <div class="lane"></div>
+        <div class="neon-sign ns1"></div>
+        <div class="neon-sign ns2"></div>
+        <div class="neon-sign ns3"></div>
+        <div class="motion-blur"></div>
+        <div class="robot-run"></div>
+        <div class="robot-run-head"><div class="robot-run-eye"></div></div>
+        <div class="hud-dist">0042 m</div>
+      </div>
+      <div class="panel-body">
+        <div class="panel-header">
+          <div class="panel-num">03</div>
+          <div class="panel-title">The First Stride</div>
+        </div>
+        <div>
+          <div class="panel-section-label">Visual</div>
+          <div class="panel-visual">Dynamic low-angle chase shot at knee height. Robot mid-stride: lean forward, arms pumping, optic fixed ahead. Environment rushes past in motion blur — chrome walls, neon signage streaking horizontal. Speed lines from flanking geometry. HUD live: distance counter ticking up. The world fights to keep up.</div>
+        </div>
+        <div class="panel-beat">The run has begun. Speed is immediate, physical, joyful — the core fantasy delivered in motion.</div>
+      </div>
+    </div>
+
+    <!-- PANEL 4 -->
+    <div class="panel">
+      <div class="scene scene-4">
+        <div class="strobe"></div>
+        <div class="lane"></div>
+        <div class="drone-enemy de1"></div>
+        <div class="drone-enemy de2"></div>
+        <div class="barrier b1"></div>
+        <div class="barrier b2"></div>
+        <div class="alert-light al1"></div>
+        <div class="alert-light al2"></div>
+        <div class="robot-chase"></div>
+        <div class="hud-dist">0847 m</div>
+      </div>
+      <div class="panel-body">
+        <div class="panel-header">
+          <div class="panel-num">04</div>
+          <div class="panel-title">The City Responds</div>
+        </div>
+        <div>
+          <div class="panel-section-label">Visual</div>
+          <div class="panel-visual">Wide over-shoulder, all three lanes visible. Enforcement drone swoops from right, scanner beam cutting hot-white across center lane. Neon barrier spans left lane at waist height. Holographic checkpoint banners trigger. Red strobes from above. Collapsing architecture debris crosses right lane. Everything is aimed at the robot.</div>
+        </div>
+        <div class="panel-beat">The city is actively hunting. Every obstacle reads as a deliberate enforcement action — not random scenery.</div>
+      </div>
+    </div>
+
+    <!-- PANEL 5 -->
+    <div class="panel">
+      <div class="scene scene-5">
+        <div class="impact-flash"></div>
+        <div class="city-scroll"></div>
+        <div class="robot-fallen"></div>
+        <div class="robot-fallen-head"></div>
+        <div class="spark sp1"></div>
+        <div class="spark sp2"></div>
+        <div class="spark sp3"></div>
+        <div class="reflect-pool"></div>
+        <div class="silence-label">. . .</div>
+      </div>
+      <div class="panel-body">
+        <div class="panel-header">
+          <div class="panel-num">05</div>
+          <div class="panel-title">The City Catches Up</div>
+        </div>
+        <div>
+          <div class="panel-section-label">Visual</div>
+          <div class="panel-visual">Tight over-shoulder, very close. Three obstacles converge simultaneously — no lane to break to. Impact. The robot's momentum carries one extra stride before collapse: controlled, fast, kinetic. It comes to rest in the center lane. Neon reflects in the wet chrome around it. The city continues to scroll for two frames after the robot stops — indifferent. Silence.</div>
+        </div>
+        <div class="panel-beat">Death is cinematic and fast, not punishing. The robot went as far as it could. The city wins — this time.</div>
+      </div>
+    </div>
+
+    <!-- PANEL 6 -->
+    <div class="panel">
+      <div class="scene scene-6">
+        <div class="neon-bleed"></div>
+        <div class="ghost-robot">
+          <div class="ghost-body"></div>
+        </div>
+        <div class="score-panel">
+          <div class="score-dist"><span>DISTANCE</span>0847 m</div>
+          <div class="score-best">BEST &nbsp;<span>1203 m</span></div>
+          <div class="score-token">RR #042</div>
+          <div class="btn-run">▶ &nbsp; RUN AGAIN</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="panel-header">
+          <div class="panel-num">06</div>
+          <div class="panel-title">Run Again</div>
+        </div>
+        <div>
+          <div class="panel-section-label">Visual</div>
+          <div class="panel-visual">Score screen. The robot's ghosted silhouette occupies the left half — backlit neon, low opacity, held in the death pose. Right half: DISTANCE 0847m large, BEST 1203m in cooler color, token ID RR #042. A single highlighted button: RUN AGAIN. The neon of Neotropolis bleeds in from the edges. The gap is 356 meters. That number is all the player can think about.</div>
+        </div>
+        <div class="panel-beat">Death was not the end — it was a data point. The robot is right there. The city is right there.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-rule"></div>
+    <div class="footer-text">ROBO RHAPSODY &mdash; NEON FUGITIVE &nbsp;&bull;&nbsp; STORYBOARD DRAFT &nbsp;&bull;&nbsp; 2026-03-30 &nbsp;&bull;&nbsp; NATHANIAL RYAN + CLAUDE CODE</div>
+  </footer>
+
+</body>
+</html>
