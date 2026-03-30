@@ -20,6 +20,14 @@ export interface RunnerSystemConfig {
   landingEpsilon: number;
   /** Duration of slide before auto-stand (ms). Range: 300–1200. */
   slideDuration: number;
+  /** Standing collider height (units). */
+  standingH: number;
+  /** Crouched collider height when sliding (units). */
+  crouchedH: number;
+  /** Collider width (units). */
+  colliderW: number;
+  /** Collider depth (units). */
+  colliderD: number;
 }
 
 export const RUNNER_SYSTEM_CONFIG: RunnerSystemConfig = {
@@ -31,4 +39,8 @@ export const RUNNER_SYSTEM_CONFIG: RunnerSystemConfig = {
   groundY:            0,
   landingEpsilon:     0.05,
   slideDuration:      600,
+  standingH:          1.8,
+  crouchedH:          0.9,
+  colliderW:          1.0,
+  colliderD:          0.8,
 };

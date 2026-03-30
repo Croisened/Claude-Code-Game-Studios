@@ -36,6 +36,9 @@ export class RunnerSystem {
   /** Current forward speed (units/s). Read by Audio System for wind intensity. */
   get currentSpeed(): number { return this._currentSpeed; }
 
+  /** True while the robot is in the Sliding locomotion state. Read by ObstacleSystem for AABB collision. */
+  get isSliding(): boolean { return this._locomotionState === LocomotionState.Sliding; }
+
   private _locomotionState: LocomotionState = LocomotionState.Standing;
   private _currentSpeed:    number          = 0;
   private _currentLane:     number          = LANE_CENTER;

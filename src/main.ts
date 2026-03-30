@@ -10,6 +10,7 @@ import { CharacterRenderer } from './core/character-renderer';
 import { EnvironmentRenderer } from './core/environment-renderer';
 import { CameraSystem } from './core/camera-system';
 import { RunnerSystem } from './core/runner-system';
+import { ObstacleSystem } from './core/obstacle-system';
 import { inputSystem } from './core/input-system';
 
 async function boot(): Promise<void> {
@@ -57,6 +58,13 @@ async function boot(): Promise<void> {
     inputSystem,
   );
 
+  const obstacleSystem = new ObstacleSystem(
+    scene,
+    characterRenderer.robotObject3D,
+    gsm,
+    runnerSystem,
+  );
+
   // ── Collision → Death ─────────────────────────────────────────────────────
   runnerSystem.onCollisionDetected(() => {
     gsm.transition(GameState.Dead);
@@ -69,13 +77,13 @@ async function boot(): Promise<void> {
   });
 
   // ── Game loop ─────────────────────────────────────────────────────────────
-  // Placeholder loop until RunnerSystem owns the update cycle (S1-07).
   let lastTime = 0;
   function animate(time: number): void {
     requestAnimationFrame(animate);
     const delta = time - lastTime;
     lastTime = time;
     runnerSystem.update(delta);
+    obstacleSystem.update(delta);
     characterRenderer.update(delta);
     environmentRenderer.update(delta);
     cameraSystem.update(delta);
