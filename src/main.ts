@@ -8,6 +8,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { gsm, GameState } from './core/game-state-manager';
 import { CharacterRenderer } from './core/character-renderer';
 import { EnvironmentRenderer } from './core/environment-renderer';
+import { CameraSystem } from './core/camera-system';
 
 async function boot(): Promise<void> {
   // ── Rapier ────────────────────────────────────────────────────────────────
@@ -32,15 +33,6 @@ async function boot(): Promise<void> {
   scene.background = new THREE.Color(0x07070d);
   scene.fog = new THREE.Fog(0x07070d, 20, 60);
 
-  const camera = new THREE.PerspectiveCamera(
-    60,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    100,
-  );
-  camera.position.set(0, 3, 8);
-  camera.lookAt(0, 0, -5);
-
   // ── Lighting ──────────────────────────────────────────────────────────────
   scene.add(new THREE.AmbientLight(0xffffff, 0.4));
   const dirLight = new THREE.DirectionalLight(0x00f0ff, 2);
@@ -50,14 +42,17 @@ async function boot(): Promise<void> {
   console.log('✓ Three.js ready');
 
   // ── Systems ───────────────────────────────────────────────────────────────
-  const characterRenderer  = new CharacterRenderer(scene, gsm);
+  const characterRenderer   = new CharacterRenderer(scene, gsm);
   const environmentRenderer = new EnvironmentRenderer(scene, gsm);
+  const cameraSystem        = new CameraSystem(
+    characterRenderer.robotObject3D,
+    window.innerWidth / window.innerHeight,
+  );
 
   // ── Resize ────────────────────────────────────────────────────────────────
   window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    cameraSystem.onResize(window.innerWidth / window.innerHeight);
   });
 
   // ── Game loop ─────────────────────────────────────────────────────────────
@@ -69,7 +64,8 @@ async function boot(): Promise<void> {
     lastTime = time;
     characterRenderer.update(delta);
     environmentRenderer.update(delta);
-    renderer.render(scene, camera);
+    cameraSystem.update(delta);
+    renderer.render(scene, cameraSystem.camera);
   }
   requestAnimationFrame(animate);
 
