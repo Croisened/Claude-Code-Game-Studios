@@ -113,7 +113,7 @@ export class GameUI {
         ${pbLine}
       </div>
       <div class="ui-bottom-band">
-        <div class="ui-prompt">PRESS ANY KEY TO RUN AGAIN</div>
+        <div class="ui-prompt">PRESS ANY KEY TO REBOOT</div>
       </div>
     `;
     this._overlay.style.display = 'flex';
