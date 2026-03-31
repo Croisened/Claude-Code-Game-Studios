@@ -38,6 +38,23 @@ export class EnvironmentRenderer {
   private readonly _dividerMat  = new THREE.MeshStandardMaterial({ color: 0x444444 });
   private readonly _buildingMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
 
+  // Neon emissive materials for windows and doors — no extra lights needed.
+  private readonly _neonBlueMat = new THREE.MeshStandardMaterial({
+    color:           0x001a2e,
+    emissive:        new THREE.Color(0x00cfff),
+    emissiveIntensity: 1.2,
+  });
+  private readonly _neonPinkMat = new THREE.MeshStandardMaterial({
+    color:           0x1a0010,
+    emissive:        new THREE.Color(0xff00cc),
+    emissiveIntensity: 1.2,
+  });
+  private readonly _neonDoorMat = new THREE.MeshStandardMaterial({
+    color:           0x1a0010,
+    emissive:        new THREE.Color(0xff00cc),
+    emissiveIntensity: 0.8,
+  });
+
   constructor(
     private readonly _scene:  THREE.Scene,
     private readonly _gsm:    GameStateManager,
@@ -152,15 +169,13 @@ export class EnvironmentRenderer {
 
   /**
    * Build one environment chunk as a Three.js Group.
-   * MVP: flat lane floor, lane dividers, placeholder flanking building blocks.
-   * v1: replace materials and flanking meshes with Neotropolis art assets.
+   * Buildings have neon-emissive windows (blue/pink) and a door on the front face.
    */
   private _buildChunk(index: number): THREE.Group {
     const group = new THREE.Group();
     const { chunkLength, laneSpacing, laneWidth } = this._config;
 
     // ── Lane floor ──────────────────────────────────────────────────────────
-    // PlaneGeometry is on the XY plane by default — rotate to lay it flat.
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(laneWidth, chunkLength),
       this._floorMat,
@@ -179,9 +194,7 @@ export class EnvironmentRenderer {
       group.add(divider);
     }
 
-    // ── Flanking placeholder buildings ───────────────────────────────────────
-    // Two buildings per side — heights vary by index for minimal visual interest.
-    // Replace entirely in v1 art pass.
+    // ── Flanking buildings with neon windows and doors ───────────────────────
     const buildingConfigs = [
       { w: 2.5, h: 4 + (index % 3) * 2, d: chunkLength * 0.9 },
       { w: 1.5, h: 6 + (index % 2) * 3, d: chunkLength * 0.5 },
@@ -189,15 +202,71 @@ export class EnvironmentRenderer {
 
     for (const side of [-1, 1]) {
       let xOffset = side * (laneSpacing + 2.5);
-      for (const bc of buildingConfigs) {
+
+      buildingConfigs.forEach((bc, bIdx) => {
+        // ── Building body ───────────────────────────────────────────────────
         const building = new THREE.Mesh(
           new THREE.BoxGeometry(bc.w, bc.h, bc.d),
           this._buildingMat,
         );
         building.position.set(xOffset, bc.h / 2, 0);
+        building.castShadow = true;
+        building.receiveShadow = true;
         group.add(building);
+
+        // Front face Z of this building (facing the runner / camera).
+        const frontZ = building.position.z + bc.d / 2 + 0.02;
+
+        // ── Neon windows ────────────────────────────────────────────────────
+        const winW    = 0.35;
+        const winH    = 0.45;
+        const marginX = 0.3;
+        const marginY = 0.4;
+        const gapX    = 0.2;
+        const gapY    = 0.3;
+
+        const cols = Math.max(1, Math.floor((bc.w - marginX * 2 + gapX) / (winW + gapX)));
+        const rows = Math.max(1, Math.floor((bc.h - marginY * 2 - 1.2 + gapY) / (winH + gapY)));
+
+        const totalWinW = cols * winW + (cols - 1) * gapX;
+        const startX    = building.position.x - totalWinW / 2 + winW / 2;
+        const startY    = 1.4; // leave headroom above ground for door
+
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            // Alternate blue/pink deterministically — varies per chunk + building.
+            const isBlue = (index + bIdx + row + col) % 2 === 0;
+            const win = new THREE.Mesh(
+              new THREE.PlaneGeometry(winW, winH),
+              isBlue ? this._neonBlueMat : this._neonPinkMat,
+            );
+            win.position.set(
+              startX + col * (winW + gapX),
+              startY + row * (winH + gapY),
+              frontZ,
+            );
+            group.add(win);
+          }
+        }
+
+        // ── Neon door (first building per side only, centred) ───────────────
+        if (bIdx === 0) {
+          const doorW = 0.55;
+          const doorH = 1.1;
+          const door  = new THREE.Mesh(
+            new THREE.PlaneGeometry(doorW, doorH),
+            this._neonDoorMat,
+          );
+          door.position.set(
+            building.position.x,
+            doorH / 2,
+            frontZ,
+          );
+          group.add(door);
+        }
+
         xOffset += side * (bc.w / 2 + 0.5);
-      }
+      });
     }
 
     return group;

@@ -40,6 +40,16 @@ export interface CharacterRendererConfig {
    * Must match the clip name exported by the 3D artist.
    */
   idleClipName: string;
+  /** Path to the run .glb model. Swapped in when the game enters Running state. */
+  runModelPath: string;
+  /** Name of the run animation clip inside the run GLB. */
+  runClipName: string;
+  /**
+   * Y rotation (radians) for the run model only.
+   * Math.PI (180°) faces the model away from camera during a run.
+   * Idle model always faces the camera (rotation 0).
+   */
+  runModelYRotation: number;
   /**
    * Path to the default skin texture applied to the robot on load.
    * Overridden by NFT Skin Loader when the player is a verified holder.
@@ -56,7 +66,10 @@ export const CHARACTER_RENDERER_CONFIG: CharacterRendererConfig = {
   placeholderColor:        0xb44fff,
   placeholderGroundOffset: 0.9,   // half of 1.8-unit placeholder mesh height
   idleModelPath:           '/assets/art/characters/robot/robot_idle.glb',
+  runModelPath:            '/assets/art/characters/robot/robot_run.glb',
   modelGroundOffset:       0,     // tune if model origin is not at feet
   idleClipName:            'mixamo.com',
+  runClipName:             'mixamo.com',
+  runModelYRotation:       Math.PI, // 180° — run model faces forward (away from camera)
   defaultTexturePath:      '/assets/art/characters/robot/skins/Default.png',
 };

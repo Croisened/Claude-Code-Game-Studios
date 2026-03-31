@@ -34,8 +34,11 @@ export class CharacterRenderer {
 
   private readonly _placeholder:  THREE.Mesh;
   private readonly _material:     THREE.MeshStandardMaterial;
-  private _loadedModel:            THREE.Object3D | null = null;
+  private _idleModel:              THREE.Object3D | null = null;
+  private _runModel:               THREE.Object3D | null = null;
+  private _activeModel:            THREE.Object3D | null = null;
   private _mixer:                  THREE.AnimationMixer | null = null;
+  private _activeTexture:          THREE.Texture | null = null;
   private _deathTimer:             ReturnType<typeof setTimeout> | null = null;
   private readonly _deathListeners = new Set<DeathCompleteListener>();
   private readonly _gsmListener:   (e: StateChangedEvent) => void;
@@ -67,8 +70,19 @@ export class CharacterRenderer {
     this._placeholder.scale.setScalar(_config.robotScale);
     root.add(this._placeholder);
 
-    // ── Load idle GLB ────────────────────────────────────────────────────────
-    this._loadIdleModel();
+    // ── Preload GLB models ───────────────────────────────────────────────────
+    // Idle: faces camera (rotation 0). Shown on MainMenu.
+    this._loadModel(this._config.idleModelPath, this._config.idleClipName, 0, (m) => {
+      this._idleModel = m;
+      // Only swap idle in if we haven't already entered Running state.
+      if (this._gsm.current !== GameState.Running) this._swapModel(m);
+    });
+    // Run: faces away from camera (rotation π). Shown during Running state.
+    // If the run model finishes loading after the state transition, swap immediately.
+    this._loadModel(this._config.runModelPath, this._config.runClipName, this._config.runModelYRotation, (m) => {
+      this._runModel = m;
+      if (this._gsm.current === GameState.Running) this._swapModel(m);
+    });
 
     // ── GSM subscription ────────────────────────────────────────────────────
     this._gsmListener = this._onStateChanged.bind(this);
@@ -94,7 +108,9 @@ export class CharacterRenderer {
       return;
     }
     texture.colorSpace = THREE.SRGBColorSpace;
-    // Traverse the root container so this works for both placeholder and GLB.
+    texture.flipY = false; // glTF UV convention — must be false for Mixamo GLBs
+    this._activeTexture = texture;
+    // Traverse the root container so this works for placeholder and any loaded GLB.
     this.robotObject3D.traverse(obj => {
       if (obj instanceof THREE.Mesh) {
         const mat = obj.material as THREE.MeshStandardMaterial;
@@ -125,7 +141,9 @@ export class CharacterRenderer {
    * @param deltaMs - time since last frame in milliseconds
    */
   update(deltaMs: number): void {
-    this._mixer?.update(deltaMs * 0.001);
+    if (this._mixer) {
+      this._mixer.update(deltaMs * 0.001);
+    }
   }
 
   /** Unsubscribe from GSM and clean up scene objects. */
@@ -139,66 +157,103 @@ export class CharacterRenderer {
 
   // ── GLB loader ───────────────────────────────────────────────────────────────
 
-  private _loadIdleModel(): void {
+  /**
+   * Load a GLB model, wire its AnimationMixer, and call back with the loaded scene.
+   * The default texture is applied to the first model that loads successfully.
+   * @param yRotation - Y rotation in radians (0 = faces camera, Math.PI = faces away)
+   */
+  private _loadModel(
+    path: string,
+    clipName: string,
+    yRotation: number,
+    onLoaded: (model: THREE.Object3D) => void,
+  ): void {
     const loader = new GLTFLoader();
     loader.load(
-      this._config.idleModelPath,
+      path,
       (gltf) => {
         const model = gltf.scene;
         model.scale.setScalar(this._config.robotScale);
         model.position.y = this._config.modelGroundOffset;
+        model.rotation.y = yRotation;
 
-        // Enable shadows on all meshes in the loaded model.
         model.traverse(obj => {
-          if (obj instanceof THREE.Mesh) obj.castShadow = true;
+          if (obj instanceof THREE.Mesh) {
+            obj.castShadow = true;
+            // Disable frustum culling — Mixamo SkinnedMesh bounding spheres are
+            // computed in T-pose and become stale once bones animate, causing the
+            // mesh to be incorrectly culled as it moves outside the T-pose bounds.
+            obj.frustumCulled = false;
+          }
         });
 
-        // Swap placeholder for the real model.
-        this.robotObject3D.remove(this._placeholder);
-        this.robotObject3D.add(model);
-        this._loadedModel = model;
+        // Use animations[0] directly — avoids any findByName reference mismatch.
+        const clip = gltf.animations[0] ?? null;
+        if (!clip && import.meta.env.DEV) {
+          console.warn(`[CharacterRenderer] No animations found in ${path}.`);
+        }
+        const tagged = model as THREE.Object3D & { _clip?: THREE.AnimationClip };
+        tagged._clip = clip ?? undefined;
 
-        // Wire AnimationMixer and start idle clip.
-        this._mixer = new THREE.AnimationMixer(model);
-        const idleClip = THREE.AnimationClip.findByName(
-          gltf.animations,
-          this._config.idleClipName,
-        );
-        if (idleClip) {
-          const action = this._mixer.clipAction(idleClip);
-          action.setEffectiveTimeScale(this._config.idleAnimationSpeed);
-          action.play();
-        } else if (import.meta.env.DEV) {
-          console.warn(
-            `[CharacterRenderer] Clip "${this._config.idleClipName}" not found in ` +
-            `${this._config.idleModelPath}. Available clips:`,
-            gltf.animations.map(a => a.name),
+        // Load default texture once (on the first model to finish loading).
+        if (this._activeTexture === null) {
+          new THREE.TextureLoader().load(
+            this._config.defaultTexturePath,
+            (tex) => { this.applyTexture(tex); },
+            undefined,
+            (err) => { console.error('[CharacterRenderer] Failed to load default texture:', err); },
           );
         }
 
-        // Apply default texture immediately so the robot never appears untextured.
-        // flipY must be false for glTF/GLB models — their UVs follow the glTF
-        // spec (origin bottom-left), whereas Three.js TextureLoader defaults to
-        // flipY=true which inverts the texture vertically on the model.
-        new THREE.TextureLoader().load(
-          this._config.defaultTexturePath,
-          (tex) => { tex.flipY = false; this.applyTexture(tex); },
-          undefined,
-          (err) => {
-            console.error('[CharacterRenderer] Failed to load default texture:', err);
-          },
-        );
-
         if (import.meta.env.DEV) {
-          console.log('[CharacterRenderer] Idle model loaded:', this._config.idleModelPath);
+          console.log(`[CharacterRenderer] Loaded: ${path}`);
         }
+
+        onLoaded(model);
       },
       undefined,
       (err) => {
-        // Load failed — placeholder mesh remains active as per GDD edge case.
-        console.error('[CharacterRenderer] Failed to load idle model:', err);
+        console.error(`[CharacterRenderer] Failed to load model: ${path}`, err);
       },
     );
+  }
+
+  /**
+   * Swap the active model inside the root container.
+   * Stops the previous mixer, starts the new one, re-applies the current texture.
+   */
+  private _swapModel(model: THREE.Object3D): void {
+    // Remove current active child (placeholder or previous model).
+    if (this._activeModel) {
+      this.robotObject3D.remove(this._activeModel);
+    } else {
+      this.robotObject3D.remove(this._placeholder);
+    }
+
+    this.robotObject3D.add(model);
+    this._activeModel = model;
+
+    // Build a fresh mixer now that the model is in the scene, then play the clip.
+    // Constructing the mixer against a live scene hierarchy ensures bone targets resolve.
+    this._mixer?.stopAllAction();
+    const tagged = model as THREE.Object3D & { _clip?: THREE.AnimationClip };
+    if (tagged._clip) {
+      this._mixer = new THREE.AnimationMixer(model);
+      this._mixer.clipAction(tagged._clip).play();
+    } else {
+      this._mixer = null;
+    }
+
+    // Re-apply the current texture so the swap is seamless.
+    if (this._activeTexture) {
+      this.robotObject3D.traverse(obj => {
+        if (obj instanceof THREE.Mesh) {
+          const mat = obj.material as THREE.MeshStandardMaterial;
+          mat.map = this._activeTexture;
+          mat.needsUpdate = true;
+        }
+      });
+    }
   }
 
   // ── GSM handler ─────────────────────────────────────────────────────────────
@@ -213,17 +268,17 @@ export class CharacterRenderer {
       case GameState.MainMenu:
         this.robotObject3D.visible = true;
         this._cancelDeathTimer();
-        // TODO: crossfade to Idle clip when full AnimationMixer wiring is complete.
+        if (this._idleModel && this._activeModel !== this._idleModel) {
+          this._swapModel(this._idleModel);
+        }
         break;
 
       case GameState.Running:
         this.robotObject3D.visible = true;
         this._cancelDeathTimer();
-        if (event.from === GameState.ScoreScreen) {
-          // Restart: hard-snap to start pose (no crossfade from death).
-          // TODO: stop death action, reset mixer to frame 0 of Idle.
+        if (this._runModel && this._activeModel !== this._runModel) {
+          this._swapModel(this._runModel);
         }
-        // TODO: crossfade Idle → Run (150ms) when Run clip is loaded.
         break;
 
       case GameState.Dead:
