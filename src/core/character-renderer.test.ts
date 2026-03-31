@@ -5,6 +5,17 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Mock GLTFLoader so jsdom doesn't attempt a real fetch (no base URL in tests).
+// The loader never calls back — placeholder mesh remains the active child,
+// which is exactly the fallback state all these tests verify against.
+vi.mock('three/addons/loaders/GLTFLoader.js', () => ({
+  GLTFLoader: class {
+    load(_url: string, _onLoad: unknown, _onProgress: unknown, _onError: unknown): void {
+      // No-op: simulates a pending / unavailable GLB in the test environment.
+    }
+  },
+}));
 import * as THREE from 'three';
 import { CharacterRenderer } from './character-renderer';
 import { GameStateManager, GameState } from './game-state-manager';
@@ -44,6 +55,18 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Find the first Mesh child of robotObject3D (placeholder or loaded model). */
+function getRobotMesh(cr: CharacterRenderer): THREE.Mesh {
+  let found: THREE.Mesh | null = null;
+  cr.robotObject3D.traverse(obj => {
+    if (!found && obj instanceof THREE.Mesh) found = obj as THREE.Mesh;
+  });
+  if (!found) throw new Error('No mesh found in robotObject3D');
+  return found;
+}
+
 // ── Scene integration ─────────────────────────────────────────────────────────
 
 describe('scene integration', () => {
@@ -52,7 +75,7 @@ describe('scene integration', () => {
   });
 
   it('robot starts hidden (not visible before MainMenu)', () => {
-    expect((cr.robotObject3D as THREE.Mesh).visible).toBe(false);
+    expect(cr.robotObject3D.visible).toBe(false);
   });
 });
 
@@ -75,33 +98,33 @@ describe('robotObject3D stability', () => {
 describe('visibility by state', () => {
   it('becomes visible on → MainMenu', () => {
     gsm.transition(GameState.MainMenu);
-    expect((cr.robotObject3D as THREE.Mesh).visible).toBe(true);
+    expect(cr.robotObject3D.visible).toBe(true);
   });
 
   it('stays visible on → Running', () => {
     gsm.transition(GameState.MainMenu);
     gsm.transition(GameState.Running);
-    expect((cr.robotObject3D as THREE.Mesh).visible).toBe(true);
+    expect(cr.robotObject3D.visible).toBe(true);
   });
 
   it('stays visible on → Dead', () => {
     reachDead(gsm);
-    expect((cr.robotObject3D as THREE.Mesh).visible).toBe(true);
+    expect(cr.robotObject3D.visible).toBe(true);
   });
 
   it('hidden on → Loading (initial state hidden)', () => {
     // Still in Loading; robot should be hidden
-    expect((cr.robotObject3D as THREE.Mesh).visible).toBe(false);
+    expect(cr.robotObject3D.visible).toBe(false);
   });
 });
 
 // ── applyTexture ──────────────────────────────────────────────────────────────
 
 describe('applyTexture', () => {
-  it('applies a valid texture to the material', () => {
+  it('applies a valid texture to the robot mesh material', () => {
     const texture = new THREE.Texture();
     cr.applyTexture(texture);
-    const mat = (cr.robotObject3D as THREE.Mesh).material as THREE.MeshStandardMaterial;
+    const mat = getRobotMesh(cr).material as THREE.MeshStandardMaterial;
     expect(mat.map).toBe(texture);
   });
 
@@ -116,7 +139,7 @@ describe('applyTexture', () => {
     const originalTexture = new THREE.Texture();
     cr.applyTexture(originalTexture);
     cr.applyTexture(null);
-    const mat = (cr.robotObject3D as THREE.Mesh).material as THREE.MeshStandardMaterial;
+    const mat = getRobotMesh(cr).material as THREE.MeshStandardMaterial;
     expect(mat.map).toBe(originalTexture);
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();

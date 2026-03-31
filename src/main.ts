@@ -55,11 +55,25 @@ async function boot(): Promise<void> {
   scene.background = new THREE.Color(0x07070d);
   scene.fog = new THREE.Fog(0x07070d, 30, 90);
 
-  // ── Lighting ──────────────────────────────────────────────────────────────
-  scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-  const dirLight = new THREE.DirectionalLight(0x00f0ff, 2);
-  dirLight.position.set(5, 10, 5);
-  scene.add(dirLight);
+  // ── Lighting — three-point rig (camera at z=+8, y=+3, robot at origin) ───
+  // Ambient: bright fill so the whole model reads clearly.
+  scene.add(new THREE.AmbientLight(0xffffff, 3));
+
+  // Key light: warm-neutral, front-left above camera — primary illumination.
+  const keyLight = new THREE.DirectionalLight(0xfff4e0, 8);
+  keyLight.position.set(-4, 8, 6);
+  keyLight.castShadow = true;
+  scene.add(keyLight);
+
+  // Fill light: cool cyan, front-right at camera height — softens key shadows.
+  const fillLight = new THREE.DirectionalLight(0x00cfff, 5);
+  fillLight.position.set(5, 4, 6);
+  scene.add(fillLight);
+
+  // Rim light: neon magenta, directly behind robot — separates it from the bg.
+  const rimLight = new THREE.DirectionalLight(0xff00cc, 6);
+  rimLight.position.set(0, 5, -6);
+  scene.add(rimLight);
 
   console.log('✓ Three.js ready');
 

@@ -20,6 +20,11 @@ production/session-state/*.md
 docs/IMPROVEMENTS-PROPOSAL.md
 docs/MULTI-STAGE-DOCUMENT-WORKFLOW.md
 
+# === Vite Public Directory ===
+# public/assets is a symlink to assets/ for Vite's static file server.
+# The real assets live in assets/ — do not commit the symlink.
+public/
+
 # === Build Output ===
 build/
 builds/
