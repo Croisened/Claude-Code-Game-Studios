@@ -36,7 +36,7 @@ async function boot(): Promise<void> {
   // ── Scene ─────────────────────────────────────────────────────────────────
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x07070d);
-  scene.fog = new THREE.Fog(0x07070d, 20, 60);
+  scene.fog = new THREE.Fog(0x07070d, 30, 90);
 
   // ── Lighting ──────────────────────────────────────────────────────────────
   scene.add(new THREE.AmbientLight(0xffffff, 0.4));

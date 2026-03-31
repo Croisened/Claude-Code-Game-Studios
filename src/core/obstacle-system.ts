@@ -52,7 +52,7 @@ export class ObstacleSystem {
     private readonly _robot:    THREE.Object3D,
     private readonly _gsm:      GameStateManager,
     private readonly _rs:       RunnerSystem,
-    private readonly _config:   ObstacleSystemConfig      = OBSTACLE_SYSTEM_CONFIG,
+    private          _config:   ObstacleSystemConfig      = OBSTACLE_SYSTEM_CONFIG,
     private readonly _registry: ReadonlyArray<ObstacleTypeDefinition> = OBSTACLE_TYPE_REGISTRY,
     private readonly _rsConfig: RunnerSystemConfig         = RUNNER_SYSTEM_CONFIG,
   ) {

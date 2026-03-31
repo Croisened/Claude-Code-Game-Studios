@@ -48,14 +48,14 @@ export class CharacterRenderer {
       emissive: new THREE.Color(_config.placeholderColor).multiplyScalar(0.15),
     });
 
-    this._mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.8, 1.8, 0.8),
-      this._material,
-    );
+    // Translate geometry so origin is at the base (bottom flush with y=0).
+    // RunnerSystem sets position.y = 0 for ground; this keeps the mesh above it.
+    const geo = new THREE.BoxGeometry(0.8, 1.8, 0.8);
+    geo.translate(0, 0.9, 0); // half-height offset baked into geometry
+
+    this._mesh = new THREE.Mesh(geo, this._material);
     this._mesh.castShadow = true;
     this._mesh.scale.setScalar(_config.robotScale);
-    // Position bottom of mesh flush with ground (y=0).
-    this._mesh.position.y = _config.placeholderGroundOffset;
     this._mesh.visible = false; // hidden until MainMenu state
 
     this.robotObject3D = this._mesh;

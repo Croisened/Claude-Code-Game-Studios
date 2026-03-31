@@ -24,9 +24,11 @@ export interface EnvironmentRendererConfig {
 }
 
 export const ENVIRONMENT_RENDERER_CONFIG: EnvironmentRendererConfig = {
-  chunkCount:         4,
+  chunkCount:         5,
   chunkLength:        20,
-  recycleBuffer:      5,
+  // recycleBuffer must be >= cameraZOffset + chunkLength (8 + 20 = 28) so that when
+  // the nearest chunk recycles, the next chunk's back face already covers the camera.
+  recycleBuffer:      28,
   laneSpacing:        3,
   initialScrollSpeed: 8,
   deltaClamp:         0.1,
