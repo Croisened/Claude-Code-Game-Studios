@@ -223,7 +223,7 @@ export class GameUI {
       #overlay .ui-score    { font-size: 72px; font-weight: bold; color: #00f0ff; text-shadow: 0 0 30px #00f0ff, 0 0 60px #00f0ff88; }
       #overlay .ui-pb       { font-size: 20px; color: #888; letter-spacing: 0.1em; }
       #overlay .ui-pb.new-pb{ color: #b44fff; text-shadow: 0 0 10px #b44fff; }
-      #overlay .ui-prompt   { font-size: 16px; color: #aaa; letter-spacing: 0.25em; animation: blink 1.2s step-end infinite; }
+      #overlay .ui-prompt   { font-size: 16px; color: #ffffff; text-shadow: 0 0 8px #ffffff, 0 0 20px #00f0ff88; letter-spacing: 0.25em; animation: blink 1.2s step-end infinite; }
       @keyframes blink { 50% { opacity: 0; } }
     `;
     document.head.appendChild(style);
