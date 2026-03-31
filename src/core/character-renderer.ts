@@ -36,6 +36,7 @@ export class CharacterRenderer {
   private readonly _material:     THREE.MeshStandardMaterial;
   private _idleModel:              THREE.Object3D | null = null;
   private _runModel:               THREE.Object3D | null = null;
+  private _deathModel:             THREE.Object3D | null = null;
   private _activeModel:            THREE.Object3D | null = null;
   private _mixer:                  THREE.AnimationMixer | null = null;
   private _activeTexture:          THREE.Texture | null = null;
@@ -82,6 +83,11 @@ export class CharacterRenderer {
     this._loadModel(this._config.runModelPath, this._config.runClipName, this._config.runModelYRotation, (m) => {
       this._runModel = m;
       if (this._gsm.current === GameState.Running) this._swapModel(m);
+    });
+    // Death: preloaded so the swap is instant when the player dies.
+    this._loadModel(this._config.deathModelPath, this._config.deathClipName, this._config.deathModelYRotation, (m) => {
+      this._deathModel = m;
+      if (this._gsm.current === GameState.Dead) this._swapDeathModel();
     });
 
     // ── GSM subscription ────────────────────────────────────────────────────
@@ -282,9 +288,12 @@ export class CharacterRenderer {
         break;
 
       case GameState.Dead:
-        // Start death sequence. Fires deathAnimationComplete at end.
-        // TODO: replace timer with AnimationMixer 'finished' event on Death clip.
-        this._startDeathTimer();
+        // Swap to death model immediately if loaded; otherwise timer fires as fallback.
+        if (this._deathModel) {
+          this._swapDeathModel();
+        } else {
+          this._startDeathTimer();
+        }
         break;
 
       case GameState.ScoreScreen:
@@ -297,19 +306,52 @@ export class CharacterRenderer {
     }
   }
 
-  // ── Death timer ──────────────────────────────────────────────────────────────
+  // ── Death sequence ───────────────────────────────────────────────────────────
+
+  /**
+   * Swap to the death model, play its clip once (LoopOnce + clampWhenFinished),
+   * and fire deathListeners when the AnimationMixer 'finished' event fires.
+   * Falls back to the timer if the model has no clip.
+   */
+  private _swapDeathModel(): void {
+    const model = this._deathModel!;
+    this._swapModel(model);
+
+    const tagged = model as THREE.Object3D & { _clip?: THREE.AnimationClip };
+    if (this._mixer && tagged._clip) {
+      // Re-configure the action for a one-shot death play.
+      const action = this._mixer.clipAction(tagged._clip);
+      action.setLoop(THREE.LoopOnce, 1);
+      action.clampWhenFinished = true;
+      action.reset().play();
+
+      // Fire deathListeners when the clip finishes naturally.
+      this._mixer.addEventListener('finished', () => {
+        this._fireDeathListeners();
+      });
+    } else {
+      // No clip — fall back to timer so the flow is never blocked.
+      this._startDeathTimer();
+    }
+  }
+
+  private _fireDeathListeners(): void {
+    for (const listener of this._deathListeners) {
+      try {
+        listener();
+      } catch (err) {
+        console.error('[CharacterRenderer] deathComplete listener threw:', err);
+      }
+    }
+  }
+
+  // ── Death timer (fallback when no death clip is available) ───────────────────
 
   private _startDeathTimer(): void {
     this._cancelDeathTimer();
     this._deathTimer = setTimeout(() => {
       this._deathTimer = null;
-      for (const listener of this._deathListeners) {
-        try {
-          listener();
-        } catch (err) {
-          console.error('[CharacterRenderer] deathComplete listener threw:', err);
-        }
-      }
+      this._fireDeathListeners();
     }, this._config.deathDuration);
   }
 

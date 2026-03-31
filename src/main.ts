@@ -105,6 +105,21 @@ async function boot(): Promise<void> {
     gsm.transition(GameState.Dead);
   });
 
+  // ── Death animation complete → ScoreScreen ────────────────────────────────
+  characterRenderer.onDeathComplete(() => {
+    gsm.transition(GameState.ScoreScreen);
+  });
+
+  // ── Showcase camera ───────────────────────────────────────────────────────
+  // Hero mode on MainMenu + ScoreScreen; gameplay mode during Running.
+  gsm.on((e) => {
+    if (e.to === GameState.Running) {
+      cameraSystem.setShowcase(false);
+    } else if (e.to === GameState.MainMenu || e.to === GameState.ScoreScreen) {
+      cameraSystem.setShowcase(true);
+    }
+  });
+
   // ── Resize ────────────────────────────────────────────────────────────────
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);

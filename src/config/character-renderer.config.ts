@@ -55,6 +55,15 @@ export interface CharacterRendererConfig {
    * Overridden by NFT Skin Loader when the player is a verified holder.
    */
   defaultTexturePath: string;
+  /** Path to the death animation .glb model. */
+  deathModelPath: string;
+  /** Name of the death animation clip inside the GLB. */
+  deathClipName: string;
+  /**
+   * Y rotation for the death model.
+   * Math.PI faces away from camera (same as run), matching the mid-run orientation.
+   */
+  deathModelYRotation: number;
 }
 
 export const CHARACTER_RENDERER_CONFIG: CharacterRendererConfig = {
@@ -72,4 +81,7 @@ export const CHARACTER_RENDERER_CONFIG: CharacterRendererConfig = {
   runClipName:             'mixamo.com',
   runModelYRotation:       Math.PI, // 180° — run model faces forward (away from camera)
   defaultTexturePath:      '/assets/art/characters/robot/skins/Default.png',
+  deathModelPath:          '/assets/art/characters/robot/robot_death.glb',
+  deathClipName:           'mixamo.com',
+  deathModelYRotation:     Math.PI, // same orientation as run — mid-run death
 };

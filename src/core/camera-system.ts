@@ -18,6 +18,8 @@ export class CameraSystem {
   /** The managed camera. Pass to renderer.render() — do not reassign. */
   readonly camera: THREE.PerspectiveCamera;
 
+  private _showcase = true; // start in showcase (MainMenu is first state)
+
   // Pre-allocated look-at target — reused every frame (zero per-frame allocation).
   private readonly _lookTarget = new THREE.Vector3();
 
@@ -27,15 +29,29 @@ export class CameraSystem {
     private readonly _config: CameraSystemConfig = CAMERA_SYSTEM_CONFIG,
   ) {
     this.camera = new THREE.PerspectiveCamera(
-      _config.fov,
+      _config.showcaseFov,
       aspect,
       _config.near,
       _config.far,
     );
 
-    // Start positioned directly behind/above the robot with no lerp lag.
-    this.camera.position.set(_robot.position.x, _config.yOffset, _config.zOffset);
+    // Start in showcase position — no lerp lag on first frame.
+    this.camera.position.set(_robot.position.x, _config.showcaseYOffset, _config.showcaseZOffset);
     this._updateLookAt();
+  }
+
+  /**
+   * Switch between hero showcase mode (MainMenu / ScoreScreen) and gameplay mode.
+   * The camera smoothly lerps to the target position on subsequent update() calls.
+   *
+   * @example
+   * cameraSystem.setShowcase(true);  // MainMenu / ScoreScreen
+   * cameraSystem.setShowcase(false); // Running
+   */
+  setShowcase(on: boolean): void {
+    this._showcase = on;
+    this.camera.fov = on ? this._config.showcaseFov : this._config.fov;
+    this.camera.updateProjectionMatrix();
   }
 
   /**
@@ -43,16 +59,19 @@ export class CameraSystem {
    * @param deltaMs - milliseconds since last frame
    */
   update(deltaMs: number): void {
-    const delta      = Math.min(deltaMs * 0.001, this._config.deltaClamp);
-    const lerpFactor = Math.max(this._config.xLerpFactor, 0.1); // guard against 0
+    const delta = Math.min(deltaMs * 0.001, this._config.deltaClamp);
 
-    // X follows robot with exponential lerp.
-    this.camera.position.x +=
-      (this._robot.position.x - this.camera.position.x) * lerpFactor * delta;
-
-    // Y and Z are always fixed — reassign each frame to resist any drift.
-    this.camera.position.y = this._config.yOffset;
-    this.camera.position.z = this._config.zOffset;
+    if (this._showcase) {
+      const lerp = this._config.showcaseLerpFactor * delta;
+      this.camera.position.x += (this._robot.position.x - this.camera.position.x) * lerp;
+      this.camera.position.y += (this._config.showcaseYOffset - this.camera.position.y) * lerp;
+      this.camera.position.z += (this._config.showcaseZOffset - this.camera.position.z) * lerp;
+    } else {
+      const lerp = Math.max(this._config.xLerpFactor, 0.1) * delta;
+      this.camera.position.x += (this._robot.position.x - this.camera.position.x) * lerp;
+      this.camera.position.y += (this._config.yOffset - this.camera.position.y) * lerp;
+      this.camera.position.z += (this._config.zOffset - this.camera.position.z) * lerp;
+    }
 
     this._updateLookAt();
   }
@@ -79,13 +98,10 @@ export class CameraSystem {
   // ── Private ──────────────────────────────────────────────────────────────────
 
   private _updateLookAt(): void {
-    // Look-at X uses camera.position.x (not robot.position.x) so the camera
-    // does not appear to stare sideways during lane transitions.
-    this._lookTarget.set(
-      this.camera.position.x,
-      0,
-      -this._config.lookAheadDistance,
-    );
+    const lookAtY = this._showcase ? this._config.showcaseLookAtY : 0;
+    const lookAtZ = this._showcase ? 0 : -this._config.lookAheadDistance;
+    // Look-at X uses camera.position.x so the camera doesn't stare sideways during lanes.
+    this._lookTarget.set(this.camera.position.x, lookAtY, lookAtZ);
     this.camera.lookAt(this._lookTarget);
   }
 }

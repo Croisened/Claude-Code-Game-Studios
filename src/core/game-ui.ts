@@ -66,11 +66,8 @@ export class GameUI {
 
     if (to === GameState.Dead) {
       this._hideHUD();
-      // Auto-advance to ScoreScreen immediately — Dead has no player-facing display.
-      // Use a microtask to let Dead-state listeners (RunnerSystem, ObstacleSystem) complete first.
-      Promise.resolve().then(() => {
-        this._gsm.transition(GameState.ScoreScreen);
-      });
+      // ScoreScreen transition is driven by CharacterRenderer.onDeathComplete
+      // once the death animation finishes — no auto-advance here.
       return;
     }
 
@@ -87,9 +84,13 @@ export class GameUI {
 
   private _showMainMenu(): void {
     this._overlay.innerHTML = `
-      <div class="ui-title">ROBO RHAPSODY</div>
-      <div class="ui-subtitle">NEON FUGITIVE</div>
-      <div class="ui-prompt">PRESS ANY KEY TO RUN</div>
+      <div class="ui-top-band">
+        <div class="ui-title">ROBO RHAPSODY</div>
+        <div class="ui-subtitle">NEON FUGITIVE</div>
+      </div>
+      <div class="ui-bottom-band">
+        <div class="ui-prompt">PRESS ANY KEY TO RUN</div>
+      </div>
     `;
     this._overlay.style.display = 'flex';
     this._listenForAnyKey(() => {
@@ -107,13 +108,18 @@ export class GameUI {
       : `<div class="ui-pb">BEST: ${pb.toLocaleString()}m</div>`;
 
     this._overlay.innerHTML = `
-      <div class="ui-score">${score.toLocaleString()}m</div>
-      ${pbLine}
-      <div class="ui-prompt">PRESS ANY KEY TO RUN AGAIN</div>
+      <div class="ui-top-band">
+        <div class="ui-score">${score.toLocaleString()}m</div>
+        ${pbLine}
+      </div>
+      <div class="ui-bottom-band">
+        <div class="ui-prompt">PRESS ANY KEY TO RUN AGAIN</div>
+      </div>
     `;
     this._overlay.style.display = 'flex';
+    // Return to MainMenu (hero showcase + idle robot) — not directly to Running.
     this._listenForAnyKey(() => {
-      this._gsm.transition(GameState.Running);
+      this._gsm.transition(GameState.MainMenu);
     });
   }
 
@@ -184,10 +190,8 @@ export class GameUI {
       inset: 0;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-      background: rgba(7, 7, 13, 0.75);
+      align-items: stretch;
+      justify-content: space-between;
       font-family: 'Courier New', monospace;
       color: #e0e0ff;
       pointer-events: none;
@@ -197,12 +201,29 @@ export class GameUI {
     // Inject shared text styles
     const style = document.createElement('style');
     style.textContent = `
-      #overlay .ui-title    { font-size: 48px; font-weight: bold; color: #b44fff; text-shadow: 0 0 20px #b44fff; letter-spacing: 0.2em; }
-      #overlay .ui-subtitle { font-size: 18px; color: #00f0ff; letter-spacing: 0.4em; margin-top: -8px; }
-      #overlay .ui-score    { font-size: 64px; font-weight: bold; color: #00f0ff; text-shadow: 0 0 20px #00f0ff; }
+      /* Gradient bands — robot shows through the clear center */
+      #overlay .ui-top-band {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 48px 24px 80px;
+        background: linear-gradient(to bottom, rgba(7,7,13,0.92) 0%, rgba(7,7,13,0) 100%);
+        gap: 8px;
+      }
+      #overlay .ui-bottom-band {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 80px 24px 48px;
+        background: linear-gradient(to top, rgba(7,7,13,0.92) 0%, rgba(7,7,13,0) 100%);
+      }
+
+      #overlay .ui-title    { font-size: 52px; font-weight: bold; color: #b44fff; text-shadow: 0 0 30px #b44fff, 0 0 60px #b44fff88; letter-spacing: 0.2em; }
+      #overlay .ui-subtitle { font-size: 18px; color: #00f0ff; letter-spacing: 0.5em; text-shadow: 0 0 12px #00f0ff; }
+      #overlay .ui-score    { font-size: 72px; font-weight: bold; color: #00f0ff; text-shadow: 0 0 30px #00f0ff, 0 0 60px #00f0ff88; }
       #overlay .ui-pb       { font-size: 20px; color: #888; letter-spacing: 0.1em; }
       #overlay .ui-pb.new-pb{ color: #b44fff; text-shadow: 0 0 10px #b44fff; }
-      #overlay .ui-prompt   { font-size: 16px; color: #888; letter-spacing: 0.2em; margin-top: 24px; animation: blink 1.2s step-end infinite; }
+      #overlay .ui-prompt   { font-size: 16px; color: #aaa; letter-spacing: 0.25em; animation: blink 1.2s step-end infinite; }
       @keyframes blink { 50% { opacity: 0; } }
     `;
     document.head.appendChild(style);
