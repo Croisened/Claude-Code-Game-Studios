@@ -12,6 +12,7 @@ import { CameraSystem } from './core/camera-system';
 import { RunnerSystem } from './core/runner-system';
 import { ObstacleSystem } from './core/obstacle-system';
 import { ScoreTracker } from './core/score-tracker';
+import { GameUI } from './core/game-ui';
 import { inputSystem } from './core/input-system';
 
 async function boot(): Promise<void> {
@@ -60,6 +61,7 @@ async function boot(): Promise<void> {
   );
 
   const scoreTracker   = new ScoreTracker(gsm);
+  const gameUI         = new GameUI(gsm, scoreTracker);
   const obstacleSystem = new ObstacleSystem(
     scene,
     characterRenderer.robotObject3D,
@@ -86,6 +88,7 @@ async function boot(): Promise<void> {
     lastTime = time;
     runnerSystem.update(delta);
     scoreTracker.update(runnerSystem.currentSpeed, delta);
+    gameUI.updateHUD();
     obstacleSystem.update(delta);
     characterRenderer.update(delta);
     environmentRenderer.update(delta);
