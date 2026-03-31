@@ -14,6 +14,23 @@ import { ObstacleSystem } from './core/obstacle-system';
 import { ScoreTracker } from './core/score-tracker';
 import { GameUI } from './core/game-ui';
 import { inputSystem } from './core/input-system';
+import { CAMERA_SYSTEM_CONFIG } from './config/camera-system.config';
+import { ENVIRONMENT_RENDERER_CONFIG } from './config/environment-renderer.config';
+
+// ── Startup assertions ──────────────────────────────────────────────────────
+// recycleBuffer must be >= cameraZOffset + chunkLength so that when the nearest
+// chunk recycles, the next chunk already covers the camera's draw distance.
+{
+  const { recycleBuffer, chunkLength } = ENVIRONMENT_RENDERER_CONFIG;
+  const { zOffset: cameraZOffset } = CAMERA_SYSTEM_CONFIG;
+  if (recycleBuffer < cameraZOffset + chunkLength) {
+    throw new Error(
+      `[Config] recycleBuffer (${recycleBuffer}) must be >= cameraZOffset + chunkLength ` +
+      `(${cameraZOffset} + ${chunkLength} = ${cameraZOffset + chunkLength}). ` +
+      `Increase recycleBuffer or reduce cameraZOffset.`,
+    );
+  }
+}
 
 async function boot(): Promise<void> {
   // ── Rapier ────────────────────────────────────────────────────────────────

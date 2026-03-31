@@ -8,12 +8,14 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "*",
     "enable3d": "^0.25.0",
-    "three": "^0.168.0"
+    "three": "^0.168.0",
+    "viem": "^2.47.6"
   },
   "devDependencies": {
     "@types/three": "^0.168.0",
