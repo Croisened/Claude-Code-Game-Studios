@@ -13,8 +13,9 @@
 import { LEADERBOARD_CONFIG, type LeaderboardConfig } from '../config/leaderboard.config';
 
 export interface LeaderboardEntry {
-  player_id: string;
-  score:     number;
+  player_id:  string;
+  score:      number;
+  created_at: string; // ISO 8601 timestamptz from Supabase
 }
 
 // ── LeaderboardService ────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ export class LeaderboardService {
    */
   async fetchTop10(): Promise<LeaderboardEntry[]> {
     const { supabaseUrl, supabaseAnonKey, topN } = this._config;
-    const url = `${supabaseUrl}/rest/v1/scores?select=player_id,score&order=score.desc&limit=${topN}`;
+    const url = `${supabaseUrl}/rest/v1/scores?select=player_id,score,created_at&order=score.desc&limit=${topN}`;
 
     const res = await fetch(url, { headers: this._headers() });
 

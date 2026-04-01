@@ -17,6 +17,7 @@
 import { type GameStateManager, GameState, type StateChangedEvent } from './game-state-manager';
 import { type ScoreTracker } from './score-tracker';
 import { type LeaderboardService, type LeaderboardEntry } from './leaderboard-service';
+import { type RobotNameService } from './robot-name-service';
 import { LEADERBOARD_CONFIG } from '../config/leaderboard.config';
 
 const SKIN_ID_STORAGE_KEY = 'roborhapsody_skin_id';
@@ -38,6 +39,7 @@ export class GameUI {
    * @param _onToggleMute      - Optional callback to toggle audio mute. Returns new muted state.
    * @param initialMuted       - Initial mute state for the button label.
    * @param _leaderboardService - Optional leaderboard service for ScoreScreen top-10 display.
+   * @param _robotNameService   - Optional robot name service for ID → name lookups.
    */
   constructor(
     private readonly _gsm:                GameStateManager,
@@ -46,6 +48,7 @@ export class GameUI {
     private readonly _onToggleMute?:      () => boolean,
     initialMuted:                         boolean = false,
     private readonly _leaderboardService?: LeaderboardService,
+    private readonly _robotNameService?:   RobotNameService,
   ) {
     this._hud     = this._createHUD();
     this._overlay = this._createOverlay();
@@ -123,10 +126,13 @@ export class GameUI {
         <div style="font-size:18px;color:#00f0ff;letter-spacing:0.5em;text-shadow:0 0 12px #00f0ff;">NEON FUGITIVE</div>
       </div>
       <div style="position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:96px 24px 48px;gap:20px;background:linear-gradient(to top,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
-        <div style="display:flex;align-items:center;gap:12px;pointer-events:auto;">
-          <label for="skin-id-input" style="font-size:13px;color:#00f0ff;letter-spacing:0.3em;text-shadow:0 0 8px #00f0ff;">NFT ID</label>
-          <input id="skin-id-input" type="number" min="0" max="83" value="${savedId}"
-            style="width:72px;background:#07070d;border:1px solid #00f0ff;border-radius:4px;color:#00f0ff;font-family:'Courier New',monospace;font-size:16px;text-align:center;padding:6px 8px;outline:none;box-shadow:0 0 8px #00f0ff44;-moz-appearance:textfield;pointer-events:auto;" />
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:auto;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <label for="skin-id-input" style="font-size:13px;color:#00f0ff;letter-spacing:0.3em;text-shadow:0 0 8px #00f0ff;">NFT ID</label>
+            <input id="skin-id-input" type="number" min="0" max="84" value="${savedId}"
+              style="width:72px;background:#07070d;border:1px solid #00f0ff;border-radius:4px;color:#00f0ff;font-family:'Courier New',monospace;font-size:16px;text-align:center;padding:6px 8px;outline:none;box-shadow:0 0 8px #00f0ff44;-moz-appearance:textfield;pointer-events:auto;" />
+          </div>
+          <div id="robot-name-display" style="font-size:13px;color:#b44fff;letter-spacing:0.15em;text-shadow:0 0 8px #b44fff;min-height:18px;"></div>
         </div>
         <div style="font-size:16px;color:#ffffff;text-shadow:0 0 8px #fff,0 0 20px #00f0ff;letter-spacing:0.25em;animation:blink 1.2s ease-in-out infinite;">PRESS ANY KEY TO RUN</div>
       </div>
@@ -138,20 +144,31 @@ export class GameUI {
     if (input && this._onSkinId) {
       const onSkinId = this._onSkinId;
 
+      const updateName = (val: string): void => {
+        const nameEl = this._overlay.querySelector<HTMLElement>('#robot-name-display');
+        if (!nameEl) return;
+        const name = this._robotNameService?.getName(val) ?? '';
+        nameEl.textContent = name;
+      };
+
       const applyId = (): void => {
         const raw     = parseInt(input.value.trim(), 10);
-        const clamped = Number.isFinite(raw) ? Math.min(83, Math.max(0, raw)) : 9;
+        const clamped = Number.isFinite(raw) ? Math.min(84, Math.max(0, raw)) : 84;
         const val     = String(clamped);
         input.value   = val;
         this._saveSkinId(val);
         onSkinId(val);
+        updateName(val);
       };
 
       input.addEventListener('change', applyId);
       input.addEventListener('blur',   applyId);
 
       // Apply the saved ID immediately so the robot already wears it on the hero screen.
-      if (savedId !== '') onSkinId(savedId);
+      if (savedId !== '') {
+        onSkinId(savedId);
+        updateName(savedId);
+      }
     }
 
     this._listenForAnyKey(() => {
@@ -200,18 +217,33 @@ export class GameUI {
     const panel = this._overlay.querySelector<HTMLElement>('#leaderboard-panel');
     if (!panel) return;
 
-    const maxLen = LEADERBOARD_CONFIG.playerIdMaxDisplay;
-    const trunc  = (s: string): string => s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
+    const maxLen   = LEADERBOARD_CONFIG.playerIdMaxDisplay;
+    const trunc    = (s: string): string => s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
+    const fmtDate  = (iso: string): string => {
+      const d = new Date(iso);
+      const mm  = String(d.getMonth() + 1).padStart(2, '0');
+      const dd  = String(d.getDate()).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      const hh  = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      return `${mm}/${dd}/${yyyy} ${hh}:${min}`;
+    };
 
     const rows = entries.map((entry, i) => {
-      const isOwn = entry.player_id === playerId && entry.score === finalScore;
-      const color = isOwn ? '#b44fff' : '#e0e0ff';
-      const glow  = isOwn ? 'text-shadow:0 0 8px #b44fff;' : '';
+      const isOwn    = entry.player_id === playerId && entry.score === finalScore;
+      const color    = isOwn ? '#b44fff' : '#e0e0ff';
+      const glow     = isOwn ? 'text-shadow:0 0 8px #b44fff;' : '';
+      const date     = fmtDate(entry.created_at);
+      const name     = this._robotNameService?.getName(entry.player_id) ?? '';
+      const playerLabel = name
+        ? `${trunc(entry.player_id)} — ${name}`
+        : trunc(entry.player_id);
       return `
         <tr style="color:${color};${glow}">
           <td style="padding:3px 8px;text-align:right;color:#888;">${i + 1}</td>
-          <td style="padding:3px 8px;text-align:left;">${trunc(entry.player_id)}</td>
+          <td style="padding:3px 8px;text-align:left;">${playerLabel}</td>
           <td style="padding:3px 8px;text-align:right;">${entry.score.toLocaleString()}m</td>
+          <td style="padding:3px 8px;text-align:right;color:#888;font-size:11px;">${date}</td>
         </tr>`;
     }).join('');
 
@@ -273,9 +305,9 @@ export class GameUI {
   private _loadSkinId(): string {
     try {
       const stored = localStorage.getItem(SKIN_ID_STORAGE_KEY);
-      if (stored === null) return '9';
+      if (stored === null) return '84';
       const val = parseInt(stored, 10);
-      return Number.isFinite(val) ? String(Math.min(83, Math.max(0, val))) : '9';
+      return Number.isFinite(val) ? String(Math.min(84, Math.max(0, val))) : '84';
     } catch { return '9'; }
   }
 

@@ -17,6 +17,6 @@ export interface LeaderboardConfig {
 export const LEADERBOARD_CONFIG: LeaderboardConfig = {
   supabaseUrl:        import.meta.env['VITE_SUPABASE_URL']      as string ?? '',
   supabaseAnonKey:    import.meta.env['VITE_SUPABASE_ANON_KEY'] as string ?? '',
-  topN:               10,
+  topN:               20,
   playerIdMaxDisplay: 20,
 };
