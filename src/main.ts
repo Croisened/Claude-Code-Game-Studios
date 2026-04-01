@@ -12,6 +12,7 @@ import { CameraSystem } from './core/camera-system';
 import { RunnerSystem } from './core/runner-system';
 import { ObstacleSystem } from './core/obstacle-system';
 import { ScoreTracker } from './core/score-tracker';
+import { DifficultyCurve } from './core/difficulty-curve';
 import { GameUI } from './core/game-ui';
 import { inputSystem } from './core/input-system';
 import { CAMERA_SYSTEM_CONFIG } from './config/camera-system.config';
@@ -91,14 +92,15 @@ async function boot(): Promise<void> {
     inputSystem,
   );
 
-  const scoreTracker   = new ScoreTracker(gsm);
-  const gameUI         = new GameUI(gsm, scoreTracker);
-  const obstacleSystem = new ObstacleSystem(
+  const scoreTracker    = new ScoreTracker(gsm);
+  const obstacleSystem  = new ObstacleSystem(
     scene,
     characterRenderer.robotObject3D,
     gsm,
     runnerSystem,
   );
+  const difficultyCurve = new DifficultyCurve(runnerSystem, obstacleSystem, scoreTracker, gsm);
+  const gameUI          = new GameUI(gsm, scoreTracker);
 
   // ── Collision → Death ─────────────────────────────────────────────────────
   runnerSystem.onCollisionDetected(() => {
@@ -134,6 +136,7 @@ async function boot(): Promise<void> {
     lastTime = time;
     runnerSystem.update(delta);
     scoreTracker.update(runnerSystem.currentSpeed, delta);
+    difficultyCurve.update();
     gameUI.updateHUD();
     obstacleSystem.update(delta);
     characterRenderer.update(delta);

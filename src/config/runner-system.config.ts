@@ -4,11 +4,9 @@
  */
 
 export interface RunnerSystemConfig {
-  /** Run-start speed (units/s). Range: 4–12. */
+  /** Run-start speed (units/s). Used only before DifficultyCurve applies stage 0. Range: 4–12. */
   initialScrollSpeed: number;
-  /** Speed increase per second (units/s²). 0 = constant speed. Range: 0–2. */
-  mvpSpeedRampRate: number;
-  /** Speed cap (units/s). Range: 15–40. */
+  /** Speed cap (units/s). Guards against DifficultyCurve misconfiguration. Range: 15–40. */
   maxSpeed: number;
   /** Upward impulse magnitude on jump. Range: 6–18. */
   jumpForce: number;
@@ -32,7 +30,6 @@ export interface RunnerSystemConfig {
 
 export const RUNNER_SYSTEM_CONFIG: RunnerSystemConfig = {
   initialScrollSpeed: 8,
-  mvpSpeedRampRate:   0.5,
   maxSpeed:           25,
   jumpForce:          12,
   gravity:            30,

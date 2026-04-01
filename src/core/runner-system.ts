@@ -79,11 +79,7 @@ export class RunnerSystem {
 
     const delta = Math.min(deltaMs * 0.001, 0.1); // 100ms clamp matches other systems
 
-    // ── Speed ramp ────────────────────────────────────────────────────────────
-    this._currentSpeed = Math.min(
-      this._currentSpeed + this._config.mvpSpeedRampRate * delta,
-      this._config.maxSpeed,
-    );
+    // Speed is set externally by DifficultyCurve via setSpeed().
     this._er.setScrollSpeed(this._currentSpeed);
 
     // ── Jump / gravity ────────────────────────────────────────────────────────

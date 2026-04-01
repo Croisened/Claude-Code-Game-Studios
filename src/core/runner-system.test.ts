@@ -239,28 +239,33 @@ describe('JUMP cancels slide', () => {
   });
 });
 
-// ── Speed ramp ────────────────────────────────────────────────────────────────
+// ── Speed — owned by DifficultyCurve via setSpeed() ──────────────────────────
+// RunnerSystem no longer self-ramps. Speed is held constant until DifficultyCurve
+// calls setSpeed(). These tests verify the hand-off contract.
 
-describe('speed ramp', () => {
+describe('speed (DifficultyCurve-driven)', () => {
   beforeEach(() => startRun());
 
   it('currentSpeed starts at initialScrollSpeed', () => {
     expect(rs.currentSpeed).toBe(RUNNER_SYSTEM_CONFIG.initialScrollSpeed);
   });
 
-  it('speed increases after update', () => {
+  it('speed does not self-ramp — stays constant across update() calls', () => {
     const before = rs.currentSpeed;
     rs.update(1000);
-    expect(rs.currentSpeed).toBeGreaterThan(before);
+    expect(rs.currentSpeed).toBe(before);
   });
 
-  it('speed never exceeds maxSpeed', () => {
-    for (let i = 0; i < 500; i++) rs.update(100);
-    expect(rs.currentSpeed).toBeLessThanOrEqual(RUNNER_SYSTEM_CONFIG.maxSpeed);
+  it('setSpeed() overrides speed immediately', () => {
+    rs.setSpeed(20);
+    rs.update(100);
+    expect(rs.currentSpeed).toBe(20);
   });
 
-  it('speed eventually reaches maxSpeed', () => {
-    for (let i = 0; i < 500; i++) rs.update(100);
+  it('speed is capped at maxSpeed when set above it', () => {
+    // setSpeed does not clamp — DifficultyCurve is responsible for staying in range.
+    // Verify that ER.setScrollSpeed receives whatever currentSpeed is.
+    rs.setSpeed(RUNNER_SYSTEM_CONFIG.maxSpeed);
     expect(rs.currentSpeed).toBe(RUNNER_SYSTEM_CONFIG.maxSpeed);
   });
 });

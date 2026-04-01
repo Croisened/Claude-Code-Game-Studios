@@ -29,19 +29,21 @@ beforeEach(() => {
   cs    = makeCs(robot);
 });
 
-// ── Initial position ──────────────────────────────────────────────────────────
+// ── Initial position — showcase mode ─────────────────────────────────────────
+// Camera starts in showcase mode (MainMenu). Gameplay Y/Z/FOV apply after
+// setShowcase(false) is called.
 
 describe('initial position', () => {
   it('camera starts at robot X', () => {
     expect(cs.camera.position.x).toBe(0);
   });
 
-  it('camera starts at configured Y offset', () => {
-    expect(cs.camera.position.y).toBe(CAMERA_SYSTEM_CONFIG.yOffset);
+  it('camera starts at showcase Y offset', () => {
+    expect(cs.camera.position.y).toBe(CAMERA_SYSTEM_CONFIG.showcaseYOffset);
   });
 
-  it('camera starts at configured Z offset', () => {
-    expect(cs.camera.position.z).toBe(CAMERA_SYSTEM_CONFIG.zOffset);
+  it('camera starts at showcase Z offset', () => {
+    expect(cs.camera.position.z).toBe(CAMERA_SYSTEM_CONFIG.showcaseZOffset);
   });
 
   it('camera tracks a non-zero starting robot X', () => {
@@ -50,14 +52,21 @@ describe('initial position', () => {
     expect(c.camera.position.x).toBe(-3);
   });
 
-  it('camera FOV matches config', () => {
+  it('camera FOV starts at showcase FOV', () => {
+    expect(cs.camera.fov).toBe(CAMERA_SYSTEM_CONFIG.showcaseFov);
+  });
+
+  it('setShowcase(false) switches FOV to gameplay FOV', () => {
+    cs.setShowcase(false);
     expect(cs.camera.fov).toBe(CAMERA_SYSTEM_CONFIG.fov);
   });
 });
 
-// ── X lerp ───────────────────────────────────────────────────────────────────
+// ── X lerp — gameplay mode ────────────────────────────────────────────────────
 
 describe('X lerp follow', () => {
+  beforeEach(() => cs.setShowcase(false));
+
   it('camera X moves toward robot X after update', () => {
     robot.position.x = 3; // robot switches to LANE_RIGHT
     cs.update(16);
@@ -79,19 +88,19 @@ describe('X lerp follow', () => {
   });
 });
 
-// ── Fixed Y and Z ─────────────────────────────────────────────────────────────
+// ── Fixed Y and Z — gameplay mode ─────────────────────────────────────────────
 
 describe('fixed Y and Z', () => {
-  it('Y remains fixed after many updates', () => {
-    robot.position.x = 3;
-    for (let i = 0; i < 30; i++) cs.update(16);
-    expect(cs.camera.position.y).toBe(CAMERA_SYSTEM_CONFIG.yOffset);
+  beforeEach(() => cs.setShowcase(false));
+
+  it('Y lerps to gameplay yOffset after many updates', () => {
+    for (let i = 0; i < 120; i++) cs.update(16);
+    expect(cs.camera.position.y).toBeCloseTo(CAMERA_SYSTEM_CONFIG.yOffset, 1);
   });
 
-  it('Z remains fixed after many updates', () => {
-    robot.position.x = 3;
-    for (let i = 0; i < 30; i++) cs.update(16);
-    expect(cs.camera.position.z).toBe(CAMERA_SYSTEM_CONFIG.zOffset);
+  it('Z lerps to gameplay zOffset after many updates', () => {
+    for (let i = 0; i < 120; i++) cs.update(16);
+    expect(cs.camera.position.z).toBeCloseTo(CAMERA_SYSTEM_CONFIG.zOffset, 1);
   });
 });
 
@@ -119,6 +128,8 @@ describe('delta clamp', () => {
 // ── snapToRobot ───────────────────────────────────────────────────────────────
 
 describe('snapToRobot', () => {
+  beforeEach(() => cs.setShowcase(false));
+
   it('instantly sets camera X to robot X', () => {
     robot.position.x = -3;
     cs.snapToRobot();
@@ -126,10 +137,12 @@ describe('snapToRobot', () => {
   });
 
   it('snap does not change Y or Z', () => {
+    // First lerp to gameplay position, then snap
+    for (let i = 0; i < 120; i++) cs.update(16);
     robot.position.x = 3;
     cs.snapToRobot();
-    expect(cs.camera.position.y).toBe(CAMERA_SYSTEM_CONFIG.yOffset);
-    expect(cs.camera.position.z).toBe(CAMERA_SYSTEM_CONFIG.zOffset);
+    expect(cs.camera.position.y).toBeCloseTo(CAMERA_SYSTEM_CONFIG.yOffset, 1);
+    expect(cs.camera.position.z).toBeCloseTo(CAMERA_SYSTEM_CONFIG.zOffset, 1);
   });
 
   it('after snap, subsequent lerp starts from snapped position', () => {

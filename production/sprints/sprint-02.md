@@ -35,7 +35,7 @@ skin connected, audio in, and leaderboard submitted.
 | ID | Task | Est. | Dependencies | Acceptance Criteria |
 |----|------|------|-------------|---------------------|
 | S2-01 | Tech hardening — `tsc --noEmit` pre-commit gate + `recycleBuffer > cameraZOffset` startup assertion | 0.1d | — | `npm run typecheck` passes; startup assertion throws on misconfigured values |
-| S2-02 | Rapier physics integration — lane snap via `setTranslation()`, jump via `applyImpulse()`, OBSTACLE_GROUP collision callbacks replacing AABB stubs | 0.5d | S1-07, S1-08 | All 6 physics TODOs resolved; existing 175 tests still pass; collision fires correctly at runtime |
+| ~~S2-02~~ | ~~Rapier physics integration~~ | — | — | **Deferred indefinitely.** AABB collision + direct position writes are working well for a lane runner. Rapier adds complexity without gameplay benefit at this scope. |
 | S2-03 | Difficulty Curve — GDD + implementation (speed ramp formula, spawn rate scalar, distance-driven) | 0.5d | S1-08, S1-09 | Speed increases on distance curve per GDD formula; difficulty playtestable at 500m+ |
 | S2-04 | Web3 library spike (2h timebox) — ethers.js vs. viem vs. wagmi decision, browser CORS check, RPC latency test | 0.25d | — | Decision recorded in ADR; chosen library installed; proof-of-concept wallet connect works in browser |
 | S2-05 | Wallet Connection — connect/disconnect, address display, persist across reload | 0.25d | S2-04 | `connect()` opens wallet modal; address shown in UI; survives page reload |
