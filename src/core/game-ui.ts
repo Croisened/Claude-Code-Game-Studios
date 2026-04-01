@@ -189,7 +189,7 @@ export class GameUI {
       <div style="position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:48px 24px 0;gap:12px;background:linear-gradient(to bottom,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
         <div style="font-size:72px;font-weight:bold;color:#00f0ff;text-shadow:0 0 30px #00f0ff,0 0 60px #00f0ff88;">${score.toLocaleString()}m</div>
         ${pbLine}
-        <div id="leaderboard-panel" style="margin-top:16px;width:560px;text-align:center;">
+        <div id="leaderboard-panel" style="margin-top:16px;width:560px;text-align:center;background:rgba(255,255,255,0.13);border-radius:8px;padding:16px 12px;backdrop-filter:blur(4px);">
           <div style="font-size:12px;color:#00f0ff88;letter-spacing:0.3em;">FETCHING LEADERBOARD…</div>
         </div>
       </div>
@@ -229,18 +229,26 @@ export class GameUI {
       return `${mm}/${dd}/${yyyy} ${hh}:${min}`;
     };
 
+    const TOP3_COLORS = ['#ffd700', '#c0c0c0', '#cd8b4a'] as const;
+
     const rows = entries.map((entry, i) => {
       const isOwn    = entry.player_id === playerId && entry.score === finalScore;
-      const color    = isOwn ? '#b44fff' : '#e0e0ff';
-      const glow     = isOwn ? 'text-shadow:0 0 8px #b44fff;' : '';
+      const isTop3   = i < 3;
+      const top3Color = TOP3_COLORS[i];
+      const color    = isOwn ? '#b44fff' : isTop3 ? top3Color : '#e0e0ff';
+      const glow     = isOwn
+        ? 'text-shadow:0 0 8px #b44fff;'
+        : isTop3 ? `text-shadow:0 0 6px ${top3Color};` : '';
+      const rowSize  = isTop3 ? 'font-size:18px;' : '';
+      const rankColor = isTop3 ? color : '#888';
       const date     = fmtDate(entry.created_at);
       const name     = this._robotNameService?.getName(entry.player_id) ?? '';
       const playerLabel = name
         ? `${trunc(entry.player_id)} — ${name}`
         : trunc(entry.player_id);
       return `
-        <tr style="color:${color};${glow}">
-          <td style="padding:3px 8px;text-align:right;color:#888;">${i + 1}</td>
+        <tr style="color:${color};${glow}${rowSize}">
+          <td style="padding:3px 8px;text-align:right;color:${rankColor};">${i + 1}</td>
           <td style="padding:3px 8px;text-align:left;">${playerLabel}</td>
           <td style="padding:3px 8px;text-align:right;">${entry.score.toLocaleString()}m</td>
           <td style="padding:3px 8px;text-align:right;color:#888;font-size:13px;">${date}</td>
@@ -248,7 +256,7 @@ export class GameUI {
     }).join('');
 
     panel.innerHTML = `
-      <div style="font-size:13px;color:#00f0ff88;letter-spacing:0.3em;margin-bottom:8px;">TOP ${entries.length}</div>
+      <div style="font-size:13px;color:#00d4e8;letter-spacing:0.3em;margin-bottom:8px;">TOP ${entries.length}</div>
       <table style="width:100%;border-collapse:collapse;font-size:16px;font-family:'Courier New',monospace;">
         ${rows}
       </table>`;
