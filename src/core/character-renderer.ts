@@ -335,9 +335,13 @@ export class CharacterRenderer {
       action.reset().play();
 
       // Fire deathListeners when the clip finishes naturally.
-      this._mixer.addEventListener('finished', () => {
+      // Store the handler so it can be removed after firing once — prevents
+      // duplicate firings if _swapDeathModel() is ever called more than once.
+      const onFinished = () => {
+        this._mixer?.removeEventListener('finished', onFinished);
         this._fireDeathListeners();
-      });
+      };
+      this._mixer.addEventListener('finished', onFinished);
     } else {
       // No clip — fall back to timer so the flow is never blocked.
       this._startDeathTimer();

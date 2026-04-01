@@ -16,31 +16,49 @@
 
 import { type GameStateManager, GameState, type StateChangedEvent } from './game-state-manager';
 import { type ScoreTracker } from './score-tracker';
+import { type LeaderboardService, type LeaderboardEntry } from './leaderboard-service';
+import { LEADERBOARD_CONFIG } from '../config/leaderboard.config';
 
 const SKIN_ID_STORAGE_KEY = 'roborhapsody_skin_id';
 
 export class GameUI {
-  private readonly _hud:        HTMLElement;
-  private readonly _overlay:    HTMLElement;
-  private readonly _gsmListener: (e: StateChangedEvent) => void;
-  private          _rafId:      number | null = null;
+  private readonly _hud:           HTMLElement;
+  private readonly _overlay:       HTMLElement;
+  private readonly _muteBtn:       HTMLElement;
+  private readonly _gsmListener:   (e: StateChangedEvent) => void;
+  private readonly _muteKeyHandler: (e: KeyboardEvent) => void;
+  private          _rafId:         number | null = null;
 
   /**
-   * @param _gsm       - Game state manager.
-   * @param _tracker   - Score tracker for distance/score display.
-   * @param _onSkinId  - Optional callback fired when the user sets an NFT ID.
-   *                     Called with the raw string; caller is responsible for loading.
-   *                     Also called on construction if a previously saved ID exists.
+   * @param _gsm               - Game state manager.
+   * @param _tracker           - Score tracker for distance/score display.
+   * @param _onSkinId          - Optional callback fired when the user sets an NFT ID.
+   *                             Called with the raw string; caller is responsible for loading.
+   *                             Also called on construction if a previously saved ID exists.
+   * @param _onToggleMute      - Optional callback to toggle audio mute. Returns new muted state.
+   * @param initialMuted       - Initial mute state for the button label.
+   * @param _leaderboardService - Optional leaderboard service for ScoreScreen top-10 display.
    */
   constructor(
-    private readonly _gsm:      GameStateManager,
-    private readonly _tracker:  ScoreTracker,
-    private readonly _onSkinId?: (id: string) => void,
+    private readonly _gsm:                GameStateManager,
+    private readonly _tracker:            ScoreTracker,
+    private readonly _onSkinId?:          (id: string) => void,
+    private readonly _onToggleMute?:      () => boolean,
+    initialMuted:                         boolean = false,
+    private readonly _leaderboardService?: LeaderboardService,
   ) {
     this._hud     = this._createHUD();
     this._overlay = this._createOverlay();
+    this._muteBtn = this._createMuteButton(initialMuted);
     document.body.appendChild(this._hud);
     document.body.appendChild(this._overlay);
+    document.body.appendChild(this._muteBtn);
+
+    // M key toggles mute from anywhere — stored for removal in destroy().
+    this._muteKeyHandler = (e: KeyboardEvent): void => {
+      if (e.key === 'm' || e.key === 'M') this._triggerMute();
+    };
+    window.addEventListener('keydown', this._muteKeyHandler);
 
     this._gsmListener = this._onStateChanged.bind(this);
     this._gsm.on(this._gsmListener);
@@ -60,9 +78,11 @@ export class GameUI {
 
   destroy(): void {
     this._gsm.off(this._gsmListener);
+    window.removeEventListener('keydown', this._muteKeyHandler);
     this._stopHUDLoop();
     this._hud.remove();
     this._overlay.remove();
+    this._muteBtn.remove();
   }
 
   // ── Private ──────────────────────────────────────────────────────────────────
@@ -105,7 +125,7 @@ export class GameUI {
       <div style="position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:96px 24px 48px;gap:20px;background:linear-gradient(to top,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
         <div style="display:flex;align-items:center;gap:12px;pointer-events:auto;">
           <label for="skin-id-input" style="font-size:13px;color:#00f0ff;letter-spacing:0.3em;text-shadow:0 0 8px #00f0ff;">NFT ID</label>
-          <input id="skin-id-input" type="number" min="0" max="81" value="${savedId}"
+          <input id="skin-id-input" type="number" min="0" max="83" value="${savedId}"
             style="width:72px;background:#07070d;border:1px solid #00f0ff;border-radius:4px;color:#00f0ff;font-family:'Courier New',monospace;font-size:16px;text-align:center;padding:6px 8px;outline:none;box-shadow:0 0 8px #00f0ff44;-moz-appearance:textfield;pointer-events:auto;" />
         </div>
         <div style="font-size:16px;color:#ffffff;text-shadow:0 0 8px #fff,0 0 20px #00f0ff;letter-spacing:0.25em;animation:blink 1.2s ease-in-out infinite;">PRESS ANY KEY TO RUN</div>
@@ -119,9 +139,12 @@ export class GameUI {
       const onSkinId = this._onSkinId;
 
       const applyId = (): void => {
-        const val = input.value.trim();
+        const raw     = parseInt(input.value.trim(), 10);
+        const clamped = Number.isFinite(raw) ? Math.min(83, Math.max(0, raw)) : 9;
+        const val     = String(clamped);
+        input.value   = val;
         this._saveSkinId(val);
-        if (val !== '') onSkinId(val);
+        onSkinId(val);
       };
 
       input.addEventListener('change', applyId);
@@ -146,19 +169,63 @@ export class GameUI {
       : `<div style="font-size:20px;color:#888;letter-spacing:0.1em;">BEST: ${pb.toLocaleString()}m</div>`;
 
     this._overlay.innerHTML = `
-      <div style="position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:48px 24px 96px;gap:12px;background:linear-gradient(to bottom,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
+      <div style="position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:48px 24px 0;gap:12px;background:linear-gradient(to bottom,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
         <div style="font-size:72px;font-weight:bold;color:#00f0ff;text-shadow:0 0 30px #00f0ff,0 0 60px #00f0ff88;">${score.toLocaleString()}m</div>
         ${pbLine}
+        <div id="leaderboard-panel" style="margin-top:16px;width:320px;text-align:center;">
+          <div style="font-size:12px;color:#00f0ff88;letter-spacing:0.3em;">FETCHING LEADERBOARD…</div>
+        </div>
       </div>
       <div style="position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:96px 24px 48px;background:linear-gradient(to top,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
         <div style="font-size:16px;color:#ffffff;text-shadow:0 0 8px #fff,0 0 20px #00f0ff;letter-spacing:0.25em;animation:blink 1.2s ease-in-out infinite;">PRESS ANY KEY TO REBOOT</div>
       </div>
     `;
     this._overlay.style.display = 'block';
+
+    // Fetch leaderboard and populate the panel (async, non-blocking).
+    if (this._leaderboardService) {
+      const playerId = this._loadSkinId();
+      this._leaderboardService.fetchTop10()
+        .then((entries) => { this._renderLeaderboard(entries, playerId, score); })
+        .catch(() => { this._renderLeaderboardError(); });
+    }
+
     // Return to MainMenu (hero showcase + idle robot) — not directly to Running.
     this._listenForAnyKey(() => {
       this._gsm.transition(GameState.MainMenu);
     });
+  }
+
+  private _renderLeaderboard(entries: LeaderboardEntry[], playerId: string, finalScore: number): void {
+    const panel = this._overlay.querySelector<HTMLElement>('#leaderboard-panel');
+    if (!panel) return;
+
+    const maxLen = LEADERBOARD_CONFIG.playerIdMaxDisplay;
+    const trunc  = (s: string): string => s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
+
+    const rows = entries.map((entry, i) => {
+      const isOwn = entry.player_id === playerId && entry.score === finalScore;
+      const color = isOwn ? '#b44fff' : '#e0e0ff';
+      const glow  = isOwn ? 'text-shadow:0 0 8px #b44fff;' : '';
+      return `
+        <tr style="color:${color};${glow}">
+          <td style="padding:3px 8px;text-align:right;color:#888;">${i + 1}</td>
+          <td style="padding:3px 8px;text-align:left;">${trunc(entry.player_id)}</td>
+          <td style="padding:3px 8px;text-align:right;">${entry.score.toLocaleString()}m</td>
+        </tr>`;
+    }).join('');
+
+    panel.innerHTML = `
+      <div style="font-size:11px;color:#00f0ff88;letter-spacing:0.3em;margin-bottom:8px;">TOP ${entries.length}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;font-family:'Courier New',monospace;">
+        ${rows}
+      </table>`;
+  }
+
+  private _renderLeaderboardError(): void {
+    const panel = this._overlay.querySelector<HTMLElement>('#leaderboard-panel');
+    if (!panel) return;
+    panel.innerHTML = `<div style="font-size:12px;color:#ff4444;letter-spacing:0.2em;">LEADERBOARD UNAVAILABLE</div>`;
   }
 
   private _showHUD(): void {
@@ -181,7 +248,7 @@ export class GameUI {
    * accidentally trigger a state transition.
    */
   private _listenForAnyKey(cb: () => void): void {
-    const IGNORED = new Set(['Shift', 'Control', 'Alt', 'Meta', 'Tab', 'CapsLock']);
+    const IGNORED = new Set(['Shift', 'Control', 'Alt', 'Meta', 'Tab', 'CapsLock', 'm', 'M']);
     let fired = false;
     const handler = (e: KeyboardEvent): void => {
       if (IGNORED.has(e.key)) return;
@@ -204,7 +271,12 @@ export class GameUI {
   // ── localStorage helpers ──────────────────────────────────────────────────────
 
   private _loadSkinId(): string {
-    try { return localStorage.getItem(SKIN_ID_STORAGE_KEY) ?? ''; } catch { return ''; }
+    try {
+      const stored = localStorage.getItem(SKIN_ID_STORAGE_KEY);
+      if (stored === null) return '9';
+      const val = parseInt(stored, 10);
+      return Number.isFinite(val) ? String(Math.min(83, Math.max(0, val))) : '9';
+    } catch { return '9'; }
   }
 
   private _saveSkinId(id: string): void {
@@ -232,6 +304,44 @@ export class GameUI {
       z-index: 10;
     `;
     el.textContent = '0m';
+    return el;
+  }
+
+  private _triggerMute(): void {
+    if (!this._onToggleMute) return;
+    const nowMuted = this._onToggleMute();
+    this._muteBtn.innerHTML = nowMuted
+      ? `[ UN<u>M</u>UTE ]`
+      : `[ <u>M</u>UTE ]`;
+  }
+
+  private _createMuteButton(initialMuted: boolean): HTMLElement {
+    const el = document.createElement('button');
+    el.id = 'mute-btn';
+    el.innerHTML = initialMuted ? `[ UN<u>M</u>UTE ]` : `[ <u>M</u>UTE ]`;
+    el.style.cssText = `
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: bold;
+      color: #00f0ff;
+      background: transparent;
+      border: 1px solid #00f0ff44;
+      border-radius: 4px;
+      padding: 6px 10px;
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      text-shadow: 0 0 8px #00f0ff;
+      z-index: 30;
+      pointer-events: auto;
+    `;
+    // Prevent spacebar from activating the button — spacebar is the jump key.
+    el.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') e.preventDefault();
+    });
+    el.addEventListener('click', () => this._triggerMute());
     return el;
   }
 

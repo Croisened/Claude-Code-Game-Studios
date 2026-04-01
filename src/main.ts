@@ -14,6 +14,8 @@ import { ObstacleSystem } from './core/obstacle-system';
 import { ScoreTracker } from './core/score-tracker';
 import { DifficultyCurve } from './core/difficulty-curve';
 import { GameUI } from './core/game-ui';
+import { AudioSystem } from './core/audio-system';
+import { LeaderboardService } from './core/leaderboard-service';
 import { inputSystem } from './core/input-system';
 import { CAMERA_SYSTEM_CONFIG } from './config/camera-system.config';
 import { ENVIRONMENT_RENDERER_CONFIG } from './config/environment-renderer.config';
@@ -118,11 +120,24 @@ async function boot(): Promise<void> {
     );
   }
 
-  const gameUI = new GameUI(gsm, scoreTracker, loadSkinById);
+  const audioSystem      = new AudioSystem(gsm, runnerSystem);
+  const leaderboardService = new LeaderboardService();
+  const gameUI = new GameUI(gsm, scoreTracker, loadSkinById, () => audioSystem.toggleMute(), audioSystem.isMuted, leaderboardService);
 
   // ── Collision → Death ─────────────────────────────────────────────────────
   runnerSystem.onCollisionDetected(() => {
     gsm.transition(GameState.Dead);
+  });
+
+  // ── Leaderboard submit on death ───────────────────────────────────────────
+  gsm.on((e) => {
+    if (e.to === GameState.Dead) {
+      const stored   = localStorage.getItem('roborhapsody_skin_id');
+      const parsed   = stored !== null ? parseInt(stored, 10) : 9;
+      const skinId   = Number.isFinite(parsed) ? Math.min(83, Math.max(0, parsed)) : 9;
+      const playerId = String(skinId);
+      leaderboardService.submitScore(playerId, scoreTracker.finalScore);
+    }
   });
 
   // ── Death animation complete → ScoreScreen ────────────────────────────────
@@ -135,6 +150,7 @@ async function boot(): Promise<void> {
   gsm.on((e) => {
     if (e.to === GameState.Running) {
       cameraSystem.setShowcase(false);
+      cameraSystem.snapToRobot(); // reset camera X on every run restart
     } else if (e.to === GameState.MainMenu || e.to === GameState.ScoreScreen) {
       cameraSystem.setShowcase(true);
     }

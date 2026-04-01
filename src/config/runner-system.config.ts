@@ -26,6 +26,8 @@ export interface RunnerSystemConfig {
   colliderW: number;
   /** Collider depth (units). */
   colliderD: number;
+  /** Maximum delta clamp (s). Prevents movement overshoot on frame spikes. Range: 0.05–0.2. */
+  deltaClamp: number;
 }
 
 export const RUNNER_SYSTEM_CONFIG: RunnerSystemConfig = {
@@ -40,4 +42,5 @@ export const RUNNER_SYSTEM_CONFIG: RunnerSystemConfig = {
   crouchedH:          0.9,
   colliderW:          1.0,
   colliderD:          0.8,
+  deltaClamp:         0.1,
 };

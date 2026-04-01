@@ -32,7 +32,7 @@ import { RUNNER_SYSTEM_CONFIG, type RunnerSystemConfig } from '../config/runner-
 
 interface PooledObstacle {
   typeIndex: number;
-  mesh:      THREE.Mesh;
+  object:    THREE.Object3D;
   active:    boolean;
 }
 
@@ -65,7 +65,9 @@ export class ObstacleSystem {
 
   /** Number of currently active (visible) obstacles. Useful for tests and debug overlays. */
   get activeCount(): number {
-    return this._pool.filter(o => o.active).length;
+    let count = 0;
+    for (const obs of this._pool) { if (obs.active) count++; }
+    return count;
   }
 
   /**
@@ -92,9 +94,9 @@ export class ObstacleSystem {
     for (const obs of this._pool) {
       if (!obs.active) continue;
 
-      obs.mesh.position.z += this._rs.currentSpeed * physicsDelta;
+      obs.object.position.z += this._rs.currentSpeed * physicsDelta;
 
-      if (obs.mesh.position.z > this._config.recycleThreshold) {
+      if (obs.object.position.z > this._config.recycleThreshold) {
         this._deactivate(obs);
         continue;
       }
@@ -133,17 +135,87 @@ export class ObstacleSystem {
     for (let typeIndex = 0; typeIndex < this._registry.length; typeIndex++) {
       const def = this._registry[typeIndex];
       for (let i = 0; i < def.poolSize; i++) {
-        const geo = new THREE.BoxGeometry(def.hitbox.w, def.hitbox.h, def.hitbox.d);
-        const mat = new THREE.MeshLambertMaterial({ color: def.debugColor });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.visible = false;
+        const object = def.name === 'Drone'
+          ? this._buildDrone()
+          : this._buildBarrier();
+        object.visible = false;
         // Park far off-screen so inactive obstacles don't affect fog/culling tests
-        mesh.position.set(0, def.centerY, -1000);
-        this._scene.add(mesh);
-        pool.push({ typeIndex, mesh, active: false });
+        object.position.set(0, def.centerY, -1000);
+        this._scene.add(object);
+        pool.push({ typeIndex, object, active: false });
       }
     }
     return pool;
+  }
+
+  /**
+   * Barrier: a neon security gate.
+   * Wide horizontal bar with two vertical end posts. Emissive orange-red.
+   * Visual only — hitbox is still read from the registry.
+   */
+  private _buildBarrier(): THREE.Object3D {
+    const group = new THREE.Group();
+    const mat   = new THREE.MeshStandardMaterial({
+      color:           0xff3300,
+      emissive:        new THREE.Color(0xff3300),
+      emissiveIntensity: 0.8,
+      metalness:       0.6,
+      roughness:       0.3,
+    });
+
+    // Horizontal crossbar spanning the lane
+    const bar  = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.1), mat);
+    bar.position.y = 0;
+    group.add(bar);
+
+    // Left post
+    const postL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.0, 0.08), mat);
+    postL.position.set(-0.76, -0.45, 0);
+    group.add(postL);
+
+    // Right post
+    const postR = postL.clone();
+    postR.position.set(0.76, -0.45, 0);
+    group.add(postR);
+
+    return group;
+  }
+
+  /**
+   * Drone: a floating scanner.
+   * Sphere body with four flat rotor discs on diagonal arms. Emissive cyan.
+   * Visual only — hitbox is still read from the registry.
+   */
+  private _buildDrone(): THREE.Object3D {
+    const group   = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color:             0x00ddff,
+      emissive:          new THREE.Color(0x00ddff),
+      emissiveIntensity: 0.7,
+      metalness:         0.8,
+      roughness:         0.2,
+    });
+    const rotorMat = new THREE.MeshStandardMaterial({
+      color:             0x004466,
+      emissive:          new THREE.Color(0x00aacc),
+      emissiveIntensity: 0.4,
+      metalness:         0.9,
+      roughness:         0.1,
+    });
+
+    // Sphere body
+    group.add(new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), bodyMat));
+
+    // 4 rotors at ±X / ±Z offsets
+    const rotorGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.03, 8);
+    const offsets: [number, number][] = [[0.3, 0.3], [-0.3, 0.3], [0.3, -0.3], [-0.3, -0.3]];
+    for (const [ox, oz] of offsets) {
+      const rotor = new THREE.Mesh(rotorGeo, rotorMat);
+      rotor.position.set(ox, 0.05, oz);
+      group.add(rotor);
+    }
+
+    return group;
   }
 
   private _onStateChanged(event: StateChangedEvent): void {
@@ -176,7 +248,7 @@ export class ObstacleSystem {
     // Minimum gap check: reject if any active obstacle is too close to spawn Z
     for (const obs of this._pool) {
       if (!obs.active) continue;
-      if (Math.abs(obs.mesh.position.z - spawnZ) < this._config.minObstacleGap) {
+      if (Math.abs(obs.object.position.z - spawnZ) < this._config.minObstacleGap) {
         return; // skip — too close
       }
     }
@@ -189,15 +261,15 @@ export class ObstacleSystem {
     }
 
     const def = this._registry[typeIndex];
-    slot.mesh.position.set(lane, def.centerY, spawnZ);
-    slot.mesh.visible = true;
-    slot.active       = true;
+    slot.object.position.set(lane, def.centerY, spawnZ);
+    slot.object.visible = true;
+    slot.active         = true;
   }
 
   private _deactivate(obs: PooledObstacle): void {
-    obs.active          = false;
-    obs.mesh.visible    = false;
-    obs.mesh.position.z = -1000; // safe off-screen park
+    obs.active            = false;
+    obs.object.visible    = false;
+    obs.object.position.z = -1000; // safe off-screen park
   }
 
   private _resetPool(): void {
@@ -219,13 +291,13 @@ export class ObstacleSystem {
     const robotMinZ = this._robot.position.z - this._rsConfig.colliderD / 2;
     const robotMaxZ = this._robot.position.z + this._rsConfig.colliderD / 2;
 
-    // Obstacle AABB
-    const obsMinX = obs.mesh.position.x - def.hitbox.w / 2;
-    const obsMaxX = obs.mesh.position.x + def.hitbox.w / 2;
-    const obsMinY = obs.mesh.position.y - def.hitbox.h / 2;
-    const obsMaxY = obs.mesh.position.y + def.hitbox.h / 2;
-    const obsMinZ = obs.mesh.position.z - def.hitbox.d / 2;
-    const obsMaxZ = obs.mesh.position.z + def.hitbox.d / 2;
+    // Obstacle AABB (derived from group root position + registry hitbox)
+    const obsMinX = obs.object.position.x - def.hitbox.w / 2;
+    const obsMaxX = obs.object.position.x + def.hitbox.w / 2;
+    const obsMinY = obs.object.position.y - def.hitbox.h / 2;
+    const obsMaxY = obs.object.position.y + def.hitbox.h / 2;
+    const obsMinZ = obs.object.position.z - def.hitbox.d / 2;
+    const obsMaxZ = obs.object.position.z + def.hitbox.d / 2;
 
     const overlap =
       robotMinX < obsMaxX && robotMaxX > obsMinX &&

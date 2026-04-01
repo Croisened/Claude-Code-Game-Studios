@@ -18,11 +18,15 @@ import * as THREE from 'three';
 import { type GameStateManager, GameState, type StateChangedEvent } from './game-state-manager';
 import { type InputSystem, InputAction } from './input-system';
 import { type EnvironmentRenderer, LANE_LEFT, LANE_CENTER, LANE_RIGHT } from './environment-renderer';
+
+const RUNNER_LANES = [LANE_LEFT, LANE_CENTER, LANE_RIGHT] as const;
 import { RUNNER_SYSTEM_CONFIG, type RunnerSystemConfig } from '../config/runner-system.config';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type CollisionDetectedListener = () => void;
+export type JumpListener              = () => void;
+export type LaneChangeListener        = () => void;
 
 export const enum LocomotionState {
   Standing = 'Standing',
@@ -47,7 +51,9 @@ export class RunnerSystem {
   private _active:          boolean         = false;
   private _slideTimer:      ReturnType<typeof setTimeout> | null = null;
 
-  private readonly _collisionListeners: Set<CollisionDetectedListener> = new Set();
+  private readonly _collisionListeners:  Set<CollisionDetectedListener> = new Set();
+  private readonly _jumpListeners:       Set<JumpListener>              = new Set();
+  private readonly _laneChangeListeners: Set<LaneChangeListener>        = new Set();
 
   // Bound references for add/remove symmetry
   private readonly _gsmListener:   (e: StateChangedEvent) => void;
@@ -77,7 +83,7 @@ export class RunnerSystem {
   update(deltaMs: number): void {
     if (!this._active) return;
 
-    const delta = Math.min(deltaMs * 0.001, 0.1); // 100ms clamp matches other systems
+    const delta = Math.min(deltaMs * 0.001, this._config.deltaClamp);
 
     // Speed is set externally by DifficultyCurve via setSpeed().
     this._er.setScrollSpeed(this._currentSpeed);
@@ -108,7 +114,7 @@ export class RunnerSystem {
       this._currentSpeed = 0;
       return;
     }
-    this._currentSpeed = speed;
+    this._currentSpeed = Math.min(speed, this._config.maxSpeed);
   }
 
   /**
@@ -122,6 +128,26 @@ export class RunnerSystem {
   /** Remove a previously registered collisionDetected listener. */
   offCollisionDetected(listener: CollisionDetectedListener): void {
     this._collisionListeners.delete(listener);
+  }
+
+  /** Register a listener fired when a jump input is accepted. */
+  onJump(listener: JumpListener): void {
+    this._jumpListeners.add(listener);
+  }
+
+  /** Remove a previously registered jump listener. */
+  offJump(listener: JumpListener): void {
+    this._jumpListeners.delete(listener);
+  }
+
+  /** Register a listener fired when a lane change succeeds. */
+  onLaneChange(listener: LaneChangeListener): void {
+    this._laneChangeListeners.add(listener);
+  }
+
+  /** Remove a previously registered lane change listener. */
+  offLaneChange(listener: LaneChangeListener): void {
+    this._laneChangeListeners.delete(listener);
   }
 
   /**
@@ -144,6 +170,8 @@ export class RunnerSystem {
     this._input.off(this._inputListener);
     this._clearSlideTimer();
     this._collisionListeners.clear();
+    this._jumpListeners.clear();
+    this._laneChangeListeners.clear();
   }
 
   // ── Private ──────────────────────────────────────────────────────────────────
@@ -185,13 +213,13 @@ export class RunnerSystem {
   }
 
   private _tryLaneChange(direction: -1 | 1): void {
-    const LANES = [LANE_LEFT, LANE_CENTER, LANE_RIGHT];
-    const idx   = LANES.indexOf(this._currentLane);
-    const next  = idx + direction;
-    if (next < 0 || next >= LANES.length) return; // at boundary — ignore
+    const idx  = RUNNER_LANES.indexOf(this._currentLane as typeof RUNNER_LANES[number]);
+    const next = idx + direction;
+    if (next < 0 || next >= RUNNER_LANES.length) return; // at boundary — ignore
 
-    this._currentLane      = LANES[next];
+    this._currentLane      = RUNNER_LANES[next];
     this._robot.position.x = this._currentLane;
+    for (const l of this._laneChangeListeners) { try { l(); } catch (e) { console.error(e); } }
   }
 
   private _tryJump(): void {
@@ -203,6 +231,7 @@ export class RunnerSystem {
 
     this._yVelocity       = this._config.jumpForce;
     this._locomotionState = LocomotionState.Jumping;
+    for (const l of this._jumpListeners) { try { l(); } catch (e) { console.error(e); } }
   }
 
   private _trySlide(): void {

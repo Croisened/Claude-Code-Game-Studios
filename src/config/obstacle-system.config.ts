@@ -14,8 +14,6 @@ export interface ObstacleTypeDefinition {
   hitbox: { w: number; h: number; d: number };
   /** Y position of the obstacle mesh center (= hitbox vertical midpoint). */
   centerY: number;
-  /** Debug mesh color during MVP (replaced by art pass in v1). */
-  debugColor: number;
 }
 
 export const OBSTACLE_TYPE_REGISTRY: ReadonlyArray<ObstacleTypeDefinition> = [
@@ -24,14 +22,12 @@ export const OBSTACLE_TYPE_REGISTRY: ReadonlyArray<ObstacleTypeDefinition> = [
     poolSize:   3,
     hitbox:     { w: 0.8, h: 1.0, d: 0.8 },
     centerY:    0.5,   // occupies Y 0–1.0; standing robot (0–1.8) collides; jump clears (base ≥ 2.7)
-    debugColor: 0xff4400,
   },
   {
     name:       'Drone',
     poolSize:   3,
     hitbox:     { w: 0.8, h: 0.5, d: 0.8 },
     centerY:    1.25,  // occupies Y 1.0–1.5; standing robot collides; crouched top 0.9 < 1.0 — slide clears
-    debugColor: 0x00ffff,
   },
 ];
 
