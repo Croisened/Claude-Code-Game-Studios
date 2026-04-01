@@ -63,12 +63,9 @@
 | `enable3d` | 2.x | Rapier physics integration, game loop, input helpers |
 | `@dimforge/rapier3d-compat` | bundled via enable3d | Physics engine (Rapier 3D WASM) |
 | `vite` | latest | Build tool, dev server, HMR |
-| `viem` | 2.x | Wallet connection + NFT ownership query (EIP-1193 + contract reads) |
-| `vite` | latest | Build tool, dev server, HMR |
 
 ## Architecture Decisions Log
 
 | ADR | Decision | Date |
 |-----|----------|------|
 | [ADR-001](../../../docs/architecture/ADR-001-web-runner-architecture.md) | Three.js + enable3d for web runner rendering and physics | 2026-03-27 |
-| [ADR-002](../../../docs/architecture/ADR-002-web3-library.md) | viem v2 for wallet connection and NFT ownership verification | 2026-03-31 |

@@ -100,7 +100,25 @@ async function boot(): Promise<void> {
     runnerSystem,
   );
   const difficultyCurve = new DifficultyCurve(runnerSystem, obstacleSystem, scoreTracker, gsm);
-  const gameUI          = new GameUI(gsm, scoreTracker);
+  // ── Skin loader — by NFT ID ───────────────────────────────────────────────
+  // Loads /assets/art/characters/robot/skins/{id}.png; falls back to Default.
+  const DEFAULT_SKIN = '/assets/art/characters/robot/skins/Default.png';
+  function loadSkinById(id: string): void {
+    const path = `/assets/art/characters/robot/skins/${id}.png`;
+    new THREE.TextureLoader().load(
+      path,
+      (tex) => { characterRenderer.applyTexture(tex); },
+      undefined,
+      () => {
+        // Unknown ID — silently fall back to default skin.
+        new THREE.TextureLoader().load(DEFAULT_SKIN, (tex) => {
+          characterRenderer.applyTexture(tex);
+        });
+      },
+    );
+  }
+
+  const gameUI = new GameUI(gsm, scoreTracker, loadSkinById);
 
   // ── Collision → Death ─────────────────────────────────────────────────────
   runnerSystem.onCollisionDetected(() => {

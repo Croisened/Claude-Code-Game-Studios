@@ -37,16 +37,16 @@ skin connected, audio in, and leaderboard submitted.
 | S2-01 | Tech hardening — `tsc --noEmit` pre-commit gate + `recycleBuffer > cameraZOffset` startup assertion | 0.1d | — | `npm run typecheck` passes; startup assertion throws on misconfigured values |
 | ~~S2-02~~ | ~~Rapier physics integration~~ | — | — | **Deferred indefinitely.** AABB collision + direct position writes are working well for a lane runner. Rapier adds complexity without gameplay benefit at this scope. |
 | S2-03 | Difficulty Curve — GDD + implementation (speed ramp formula, spawn rate scalar, distance-driven) | 0.5d | S1-08, S1-09 | Speed increases on distance curve per GDD formula; difficulty playtestable at 500m+ |
-| S2-04 | Web3 library spike (2h timebox) — ethers.js vs. viem vs. wagmi decision, browser CORS check, RPC latency test | 0.25d | — | Decision recorded in ADR; chosen library installed; proof-of-concept wallet connect works in browser |
-| S2-05 | Wallet Connection — connect/disconnect, address display, persist across reload | 0.25d | S2-04 | `connect()` opens wallet modal; address shown in UI; survives page reload |
-| S2-06 | NFT Ownership Verification — query contract for token ownership by wallet address | 0.5d | S2-05 | Given known wallet + token ID, returns correct true/false; handles no-wallet and wrong-chain gracefully |
+| ~~S2-04~~ | ~~Web3 library spike~~ | — | — | **Dropped.** Wallet connect removed from scope. |
+| ~~S2-05~~ | ~~Wallet Connection~~ | — | — | **Dropped.** Wallet connect removed from scope. |
+| ~~S2-06~~ | ~~NFT Ownership Verification~~ | — | — | **Dropped.** Wallet connect removed from scope. |
 
 ### Should Have
 
 | ID | Task | Est. | Dependencies | Acceptance Criteria |
 |----|------|------|-------------|---------------------|
-| S2-07 | NFT Skin Loader — load robot texture from token metadata URI, fallback to default skin | 0.25d | S2-06, S1-04 | NFT holder sees their robot skin; non-holder sees default; load error falls back silently |
-| S2-08 | Main Menu — proper start screen with wallet connect CTA, game title, start prompt | 0.25d | S2-05, S1-02 | Menu displays on load; wallet connect visible; any key / click starts game |
+| S2-07 | Skin Selector — NFT ID input on hero screen; loads skin by number, persists across sessions | 0.25d | S1-04 | Player can enter any skin ID; robot updates live; unknown ID falls back to Default |
+| ~~S2-08~~ | ~~Main Menu — wallet connect CTA~~ | — | — | **Dropped.** No wallet connect. Skin selector (S2-07) replaces this. |
 | S2-09 | Audio System — GDD + implementation (SFX: run loop, jump, death, lane change + background music loop) | 0.5d | S1-02 | All 4 SFX trigger on correct events; music loops without gap; mute toggle works |
 
 ### Nice to Have
@@ -82,8 +82,6 @@ skin connected, audio in, and leaderboard submitted.
 
 ## Dependencies on External Factors
 
-- **Web3 RPC endpoint**: Public RPC (Infura/Alchemy free tier) required for NFT query — needs API key
-- **NFT contract ABI**: Robo Rhapsody contract ABI required for S2-06 — Nathanial to provide
 - **Audio assets**: SFX + music files required for S2-09 — source or generate before task begins
 - **Leaderboard service**: Supabase project or Lootlocker account required for S2-10
 
