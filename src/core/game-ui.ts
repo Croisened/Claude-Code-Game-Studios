@@ -290,15 +290,25 @@ export class GameUI {
   private _listenForAnyKey(cb: () => void): void {
     const IGNORED = new Set(['Shift', 'Control', 'Alt', 'Meta', 'Tab', 'CapsLock', 'm', 'M']);
     let fired = false;
-    const handler = (e: KeyboardEvent): void => {
-      if (IGNORED.has(e.key)) return;
-      if (e.target instanceof HTMLInputElement) return;
+
+    const fire = (): void => {
       if (fired) return;
       fired = true;
-      window.removeEventListener('keydown', handler);
+      window.removeEventListener('keydown',    keyHandler);
+      window.removeEventListener('touchstart', touchHandler as EventListener);
       cb();
     };
-    window.addEventListener('keydown', handler);
+
+    const keyHandler = (e: KeyboardEvent): void => {
+      if (IGNORED.has(e.key)) return;
+      if (e.target instanceof HTMLInputElement) return;
+      fire();
+    };
+
+    const touchHandler = (): void => { fire(); };
+
+    window.addEventListener('keydown',    keyHandler);
+    window.addEventListener('touchstart', touchHandler as EventListener, { passive: true });
   }
 
   private _stopHUDLoop(): void {

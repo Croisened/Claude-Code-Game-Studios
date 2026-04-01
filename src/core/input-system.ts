@@ -43,18 +43,30 @@ export class InputSystem {
   private readonly _listeners  = new Set<ActionListener>();
 
   // Bound handler references — stored so they can be removed in destroy().
-  private readonly _onKeyDown: (e: KeyboardEvent) => void;
-  private readonly _onKeyUp:   (e: KeyboardEvent) => void;
-  private readonly _onBlur:    ()                 => void;
+  private readonly _onKeyDown:    (e: KeyboardEvent) => void;
+  private readonly _onKeyUp:      (e: KeyboardEvent) => void;
+  private readonly _onBlur:       ()                 => void;
+  private readonly _onTouchStart: (e: TouchEvent)    => void;
+  private readonly _onTouchEnd:   (e: TouchEvent)    => void;
+
+  // Minimum px distance for a swipe to register as an action.
+  private static readonly SWIPE_THRESHOLD = 40;
+
+  private _touchStartX = 0;
+  private _touchStartY = 0;
 
   constructor(private readonly _target: Window = window) {
-    this._onKeyDown = this._handleKeyDown.bind(this);
-    this._onKeyUp   = this._handleKeyUp.bind(this);
-    this._onBlur    = this._handleBlur.bind(this);
+    this._onKeyDown    = this._handleKeyDown.bind(this);
+    this._onKeyUp      = this._handleKeyUp.bind(this);
+    this._onBlur       = this._handleBlur.bind(this);
+    this._onTouchStart = this._handleTouchStart.bind(this);
+    this._onTouchEnd   = this._handleTouchEnd.bind(this);
 
-    this._target.addEventListener('keydown', this._onKeyDown as EventListener);
-    this._target.addEventListener('keyup',   this._onKeyUp   as EventListener);
-    this._target.addEventListener('blur',    this._onBlur);
+    this._target.addEventListener('keydown',    this._onKeyDown    as EventListener);
+    this._target.addEventListener('keyup',      this._onKeyUp      as EventListener);
+    this._target.addEventListener('blur',       this._onBlur);
+    this._target.addEventListener('touchstart', this._onTouchStart as EventListener, { passive: true });
+    this._target.addEventListener('touchend',   this._onTouchEnd   as EventListener, { passive: true });
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -88,9 +100,11 @@ export class InputSystem {
 
   /** Remove all listeners and browser event handlers. */
   destroy(): void {
-    this._target.removeEventListener('keydown', this._onKeyDown as EventListener);
-    this._target.removeEventListener('keyup',   this._onKeyUp   as EventListener);
-    this._target.removeEventListener('blur',    this._onBlur);
+    this._target.removeEventListener('keydown',    this._onKeyDown    as EventListener);
+    this._target.removeEventListener('keyup',      this._onKeyUp      as EventListener);
+    this._target.removeEventListener('blur',       this._onBlur);
+    this._target.removeEventListener('touchstart', this._onTouchStart as EventListener);
+    this._target.removeEventListener('touchend',   this._onTouchEnd   as EventListener);
     this._listeners.clear();
     this._activeKeys.clear();
   }
@@ -119,6 +133,38 @@ export class InputSystem {
   private _handleBlur(): void {
     // Clear all held keys so no phantom repeats fire when focus returns.
     this._activeKeys.clear();
+  }
+
+  private _handleTouchStart(e: TouchEvent): void {
+    const touch = e.touches[0];
+    if (!touch) return;
+    this._touchStartX = touch.clientX;
+    this._touchStartY = touch.clientY;
+  }
+
+  private _handleTouchEnd(e: TouchEvent): void {
+    if (!this._enabled) return;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+
+    const dx = touch.clientX - this._touchStartX;
+    const dy = touch.clientY - this._touchStartY;
+    const t  = InputSystem.SWIPE_THRESHOLD;
+
+    let action: InputAction | undefined;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal swipe dominates.
+      if (Math.abs(dx) >= t) action = dx < 0 ? InputAction.LaneLeft : InputAction.LaneRight;
+    } else {
+      // Vertical swipe dominates.
+      // Negative dy = finger moved up = Jump; positive dy = finger moved down = Slide.
+      if (Math.abs(dy) >= t) action = dy < 0 ? InputAction.Jump : InputAction.Slide;
+    }
+
+    if (action === undefined) return;
+    for (const listener of this._listeners) {
+      listener(action);
+    }
   }
 }
 
