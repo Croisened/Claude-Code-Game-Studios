@@ -234,6 +234,8 @@ export class EnvironmentRenderer {
 
         for (let row = 0; row < rows; row++) {
           for (let col = 0; col < cols; col++) {
+            // Skip ~1 in 3 windows deterministically to break up the grid.
+            if ((index * 13 + bIdx * 7 + row * 11 + col * 17) % 3 === 0) continue;
             // Alternate blue/pink deterministically — varies per chunk + building.
             const isBlue = (index + bIdx + row + col) % 2 === 0;
             const win = new THREE.Mesh(
@@ -263,6 +265,50 @@ export class EnvironmentRenderer {
             frontZ,
           );
           group.add(door);
+        }
+
+        // ── Inner-wall windows (lane-facing side) ────────────────────────────
+        // The inner wall runs parallel to Z — windows spread along building depth.
+        const innerX      = building.position.x - side * (bc.w / 2 + 0.02);
+        const innerCols   = Math.max(1, Math.floor((bc.d - marginX * 2 + gapX) / (winW + gapX)));
+        const totalInnerW = innerCols * winW + (innerCols - 1) * gapX;
+        const innerStartZ = building.position.z - totalInnerW / 2 + winW / 2;
+
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < innerCols; col++) {
+            // Skip ~1 in 3 windows deterministically to break up the grid.
+            if ((index * 13 + bIdx * 7 + row * 11 + col * 17) % 3 === 0) continue;
+            // Offset colour phase by 1 so inner/front walls don't sync up.
+            const isBlue = (index + bIdx + row + col + 1) % 2 === 0;
+            const win = new THREE.Mesh(
+              new THREE.PlaneGeometry(winW, winH),
+              isBlue ? this._neonBlueMat : this._neonPinkMat,
+            );
+            win.rotation.y = -side * Math.PI / 2;
+            win.position.set(
+              innerX,
+              startY + row * (winH + gapY),
+              innerStartZ + col * (winW + gapX),
+            );
+            group.add(win);
+          }
+        }
+
+        // ── Inner-wall door (first building per side only, centred on depth) ─
+        if (bIdx === 0) {
+          const innerDoorW = 0.55;
+          const innerDoorH = 1.1;
+          const innerDoor  = new THREE.Mesh(
+            new THREE.PlaneGeometry(innerDoorW, innerDoorH),
+            this._neonDoorMat,
+          );
+          innerDoor.rotation.y = -side * Math.PI / 2;
+          innerDoor.position.set(
+            innerX,
+            innerDoorH / 2,
+            building.position.z,
+          );
+          group.add(innerDoor);
         }
 
         xOffset += side * (bc.w / 2 + 0.5);

@@ -189,7 +189,7 @@ export class GameUI {
       <div style="position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:48px 24px 0;gap:12px;background:linear-gradient(to bottom,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
         <div style="font-size:72px;font-weight:bold;color:#00f0ff;text-shadow:0 0 30px #00f0ff,0 0 60px #00f0ff88;">${score.toLocaleString()}m</div>
         ${pbLine}
-        <div id="leaderboard-panel" style="margin-top:16px;width:320px;text-align:center;">
+        <div id="leaderboard-panel" style="margin-top:16px;width:560px;text-align:center;">
           <div style="font-size:12px;color:#00f0ff88;letter-spacing:0.3em;">FETCHING LEADERBOARD…</div>
         </div>
       </div>
@@ -243,13 +243,13 @@ export class GameUI {
           <td style="padding:3px 8px;text-align:right;color:#888;">${i + 1}</td>
           <td style="padding:3px 8px;text-align:left;">${playerLabel}</td>
           <td style="padding:3px 8px;text-align:right;">${entry.score.toLocaleString()}m</td>
-          <td style="padding:3px 8px;text-align:right;color:#888;font-size:11px;">${date}</td>
+          <td style="padding:3px 8px;text-align:right;color:#888;font-size:13px;">${date}</td>
         </tr>`;
     }).join('');
 
     panel.innerHTML = `
-      <div style="font-size:11px;color:#00f0ff88;letter-spacing:0.3em;margin-bottom:8px;">TOP ${entries.length}</div>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;font-family:'Courier New',monospace;">
+      <div style="font-size:13px;color:#00f0ff88;letter-spacing:0.3em;margin-bottom:8px;">TOP ${entries.length}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:16px;font-family:'Courier New',monospace;">
         ${rows}
       </table>`;
   }
