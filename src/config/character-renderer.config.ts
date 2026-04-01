@@ -55,6 +55,16 @@ export interface CharacterRendererConfig {
    * Overridden by NFT Skin Loader when the player is a verified holder.
    */
   defaultTexturePath: string;
+  /**
+   * PBR metalness factor applied to all robot materials. Range: 0–1.
+   * 0 = fully dielectric (plastic), 1 = fully metallic.
+   */
+  metalness: number;
+  /**
+   * PBR roughness factor applied to all robot materials. Range: 0–1.
+   * 0 = mirror-smooth, 1 = fully diffuse/matte.
+   */
+  roughness: number;
   /** Path to the death animation .glb model. */
   deathModelPath: string;
   /** Name of the death animation clip inside the GLB. */
@@ -81,6 +91,8 @@ export const CHARACTER_RENDERER_CONFIG: CharacterRendererConfig = {
   runClipName:             'mixamo.com',
   runModelYRotation:       Math.PI, // 180° — run model faces forward (away from camera)
   defaultTexturePath:      '/assets/art/characters/robot/skins/Default.png',
+  metalness:               0.8,  // robot should read as metal
+  roughness:               0.25, // low roughness = shiny specular highlight
   deathModelPath:          '/assets/art/characters/robot/robot_death.glb',
   deathClipName:           'mixamo.com',
   deathModelYRotation:     Math.PI, // same orientation as run — mid-run death

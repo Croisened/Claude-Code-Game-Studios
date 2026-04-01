@@ -59,8 +59,10 @@ export class CharacterRenderer {
     // ── Placeholder mesh ────────────────────────────────────────────────────
     // Shown until GLB loads (or as permanent fallback if load fails).
     this._material = new THREE.MeshStandardMaterial({
-      color:    _config.placeholderColor,
-      emissive: new THREE.Color(_config.placeholderColor).multiplyScalar(0.15),
+      color:     _config.placeholderColor,
+      emissive:  new THREE.Color(_config.placeholderColor).multiplyScalar(0.15),
+      metalness: _config.metalness,
+      roughness: _config.roughness,
     });
 
     const geo = new THREE.BoxGeometry(0.8, 1.8, 0.8);
@@ -120,7 +122,9 @@ export class CharacterRenderer {
     this.robotObject3D.traverse(obj => {
       if (obj instanceof THREE.Mesh) {
         const mat = obj.material as THREE.MeshStandardMaterial;
-        mat.map = texture;
+        mat.map       = texture;
+        mat.metalness = this._config.metalness;
+        mat.roughness = this._config.roughness;
         mat.needsUpdate = true;
       }
     });
@@ -190,6 +194,11 @@ export class CharacterRenderer {
             // computed in T-pose and become stale once bones animate, causing the
             // mesh to be incorrectly culled as it moves outside the T-pose bounds.
             obj.frustumCulled = false;
+            // Override GLB-baked PBR values with config-driven metalness/roughness.
+            const mat = obj.material as THREE.MeshStandardMaterial;
+            mat.metalness = this._config.metalness;
+            mat.roughness = this._config.roughness;
+            mat.needsUpdate = true;
           }
         });
 
