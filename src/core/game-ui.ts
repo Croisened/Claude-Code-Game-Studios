@@ -84,15 +84,15 @@ export class GameUI {
 
   private _showMainMenu(): void {
     this._overlay.innerHTML = `
-      <div class="ui-top-band">
-        <div class="ui-title">ROBO RHAPSODY</div>
-        <div class="ui-subtitle">NEON FUGITIVE</div>
+      <div style="position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:48px 24px 96px;gap:8px;background:linear-gradient(to bottom,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
+        <div style="font-size:52px;font-weight:bold;color:#b44fff;text-shadow:0 0 30px #b44fff,0 0 60px #b44fff88;letter-spacing:0.2em;">ROBO RHAPSODY</div>
+        <div style="font-size:18px;color:#00f0ff;letter-spacing:0.5em;text-shadow:0 0 12px #00f0ff;">NEON FUGITIVE</div>
       </div>
-      <div class="ui-bottom-band">
-        <div class="ui-prompt">PRESS ANY KEY TO RUN</div>
+      <div style="position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:96px 24px 48px;background:linear-gradient(to top,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
+        <div style="font-size:16px;color:#ffffff;text-shadow:0 0 8px #fff,0 0 20px #00f0ff;letter-spacing:0.25em;animation:blink 1.2s ease-in-out infinite;">PRESS ANY KEY TO RUN</div>
       </div>
     `;
-    this._overlay.style.display = 'flex';
+    this._overlay.style.display = 'block';
     this._listenForAnyKey(() => {
       this._gsm.transition(GameState.Running);
     });
@@ -104,19 +104,19 @@ export class GameUI {
     const isPB  = this._tracker.isNewPersonalBest;
 
     const pbLine = isPB
-      ? `<div class="ui-pb new-pb">NEW BEST: ${score.toLocaleString()}m</div>`
-      : `<div class="ui-pb">BEST: ${pb.toLocaleString()}m</div>`;
+      ? `<div style="font-size:20px;color:#b44fff;text-shadow:0 0 10px #b44fff;letter-spacing:0.1em;">NEW BEST: ${score.toLocaleString()}m</div>`
+      : `<div style="font-size:20px;color:#888;letter-spacing:0.1em;">BEST: ${pb.toLocaleString()}m</div>`;
 
     this._overlay.innerHTML = `
-      <div class="ui-top-band">
-        <div class="ui-score">${score.toLocaleString()}m</div>
+      <div style="position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:48px 24px 96px;gap:12px;background:linear-gradient(to bottom,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
+        <div style="font-size:72px;font-weight:bold;color:#00f0ff;text-shadow:0 0 30px #00f0ff,0 0 60px #00f0ff88;">${score.toLocaleString()}m</div>
         ${pbLine}
       </div>
-      <div class="ui-bottom-band">
-        <div class="ui-prompt">PRESS ANY KEY TO REBOOT</div>
+      <div style="position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:96px 24px 48px;background:linear-gradient(to top,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
+        <div style="font-size:16px;color:#ffffff;text-shadow:0 0 8px #fff,0 0 20px #00f0ff;letter-spacing:0.25em;animation:blink 1.2s ease-in-out infinite;">PRESS ANY KEY TO REBOOT</div>
       </div>
     `;
-    this._overlay.style.display = 'flex';
+    this._overlay.style.display = 'block';
     // Return to MainMenu (hero showcase + idle robot) — not directly to Running.
     this._listenForAnyKey(() => {
       this._gsm.transition(GameState.MainMenu);
@@ -194,38 +194,9 @@ export class GameUI {
       z-index: 20;
     `;
 
-    // Inject shared text styles
+    // Keyframe for prompt blink — inline styles cannot define @keyframes.
     const style = document.createElement('style');
-    style.textContent = `
-      /* Absolutely-positioned bands — robot shows through the clear center */
-      #overlay .ui-top-band {
-        position: absolute;
-        top: 0; left: 0; right: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 48px 24px 96px;
-        background: linear-gradient(to bottom, rgba(7,7,13,0.95) 0%, rgba(7,7,13,0) 100%);
-        gap: 8px;
-      }
-      #overlay .ui-bottom-band {
-        position: absolute;
-        bottom: 0; left: 0; right: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 96px 24px 48px;
-        background: linear-gradient(to top, rgba(7,7,13,0.95) 0%, rgba(7,7,13,0) 100%);
-      }
-
-      #overlay .ui-title    { font-size: 52px; font-weight: bold; color: #b44fff; text-shadow: 0 0 30px #b44fff, 0 0 60px #b44fff88; letter-spacing: 0.2em; }
-      #overlay .ui-subtitle { font-size: 18px; color: #00f0ff; letter-spacing: 0.5em; text-shadow: 0 0 12px #00f0ff; }
-      #overlay .ui-score    { font-size: 72px; font-weight: bold; color: #00f0ff; text-shadow: 0 0 30px #00f0ff, 0 0 60px #00f0ff88; }
-      #overlay .ui-pb       { font-size: 20px; color: #888; letter-spacing: 0.1em; }
-      #overlay .ui-pb.new-pb{ color: #b44fff; text-shadow: 0 0 10px #b44fff; }
-      #overlay .ui-prompt   { font-size: 16px; color: #ffffff; text-shadow: 0 0 8px #ffffff, 0 0 20px #00f0ff88; letter-spacing: 0.25em; animation: blink 1.2s ease-in-out infinite; }
-      @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
-    `;
+    style.textContent = `@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }`;
     document.head.appendChild(style);
 
     return el;
