@@ -188,10 +188,6 @@ export class GameUI {
     el.style.cssText = `
       position: fixed;
       inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      justify-content: space-between;
       font-family: 'Courier New', monospace;
       color: #e0e0ff;
       pointer-events: none;
@@ -201,21 +197,25 @@ export class GameUI {
     // Inject shared text styles
     const style = document.createElement('style');
     style.textContent = `
-      /* Gradient bands — robot shows through the clear center */
+      /* Absolutely-positioned bands — robot shows through the clear center */
       #overlay .ui-top-band {
+        position: absolute;
+        top: 0; left: 0; right: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 48px 24px 80px;
-        background: linear-gradient(to bottom, rgba(7,7,13,0.92) 0%, rgba(7,7,13,0) 100%);
+        padding: 48px 24px 96px;
+        background: linear-gradient(to bottom, rgba(7,7,13,0.95) 0%, rgba(7,7,13,0) 100%);
         gap: 8px;
       }
       #overlay .ui-bottom-band {
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 80px 24px 48px;
-        background: linear-gradient(to top, rgba(7,7,13,0.92) 0%, rgba(7,7,13,0) 100%);
+        padding: 96px 24px 48px;
+        background: linear-gradient(to top, rgba(7,7,13,0.95) 0%, rgba(7,7,13,0) 100%);
       }
 
       #overlay .ui-title    { font-size: 52px; font-weight: bold; color: #b44fff; text-shadow: 0 0 30px #b44fff, 0 0 60px #b44fff88; letter-spacing: 0.2em; }
@@ -223,8 +223,8 @@ export class GameUI {
       #overlay .ui-score    { font-size: 72px; font-weight: bold; color: #00f0ff; text-shadow: 0 0 30px #00f0ff, 0 0 60px #00f0ff88; }
       #overlay .ui-pb       { font-size: 20px; color: #888; letter-spacing: 0.1em; }
       #overlay .ui-pb.new-pb{ color: #b44fff; text-shadow: 0 0 10px #b44fff; }
-      #overlay .ui-prompt   { font-size: 16px; color: #ffffff; text-shadow: 0 0 8px #ffffff, 0 0 20px #00f0ff88; letter-spacing: 0.25em; animation: blink 1.2s step-end infinite; }
-      @keyframes blink { 50% { opacity: 0; } }
+      #overlay .ui-prompt   { font-size: 16px; color: #ffffff; text-shadow: 0 0 8px #ffffff, 0 0 20px #00f0ff88; letter-spacing: 0.25em; animation: blink 1.2s ease-in-out infinite; }
+      @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
     `;
     document.head.appendChild(style);
 
