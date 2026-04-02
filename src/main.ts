@@ -13,7 +13,7 @@ import { RunnerSystem } from './core/runner-system';
 import { ObstacleSystem } from './core/obstacle-system';
 import { ScoreTracker } from './core/score-tracker';
 import { DifficultyCurve } from './core/difficulty-curve';
-import { GameUI } from './core/game-ui';
+import { GameUI, SKIN_ID_STORAGE_KEY, SKIN_ID_DEFAULT, SKIN_ID_MIN, SKIN_ID_MAX } from './core/game-ui';
 import { AudioSystem } from './core/audio-system';
 import { LeaderboardService } from './core/leaderboard-service';
 import { RobotNameService } from './core/robot-name-service';
@@ -135,9 +135,9 @@ async function boot(): Promise<void> {
   // ── Leaderboard submit on death ───────────────────────────────────────────
   gsm.on((e) => {
     if (e.to === GameState.Dead) {
-      const stored   = localStorage.getItem('roborhapsody_skin_id');
-      const parsed   = stored !== null ? parseInt(stored, 10) : 84;
-      const skinId   = Number.isFinite(parsed) ? Math.min(84, Math.max(0, parsed)) : 84;
+      const stored   = localStorage.getItem(SKIN_ID_STORAGE_KEY);
+      const parsed   = stored !== null ? parseInt(stored, 10) : SKIN_ID_DEFAULT;
+      const skinId   = Number.isFinite(parsed) ? Math.min(SKIN_ID_MAX, Math.max(SKIN_ID_MIN, parsed)) : SKIN_ID_DEFAULT;
       const playerId = String(skinId);
       leaderboardService.submitScore(playerId, scoreTracker.finalScore);
     }

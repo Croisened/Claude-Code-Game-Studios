@@ -20,7 +20,10 @@ import { type LeaderboardService, type LeaderboardEntry } from './leaderboard-se
 import { type RobotNameService } from './robot-name-service';
 import { LEADERBOARD_CONFIG } from '../config/leaderboard.config';
 
-const SKIN_ID_STORAGE_KEY = 'roborhapsody_skin_id';
+export const SKIN_ID_STORAGE_KEY = 'roborhapsody_skin_id';
+export const SKIN_ID_DEFAULT     = 9;
+export const SKIN_ID_MIN         = 0;
+export const SKIN_ID_MAX         = 84;
 
 export class GameUI {
   private readonly _hud:           HTMLElement;
@@ -323,10 +326,12 @@ export class GameUI {
   private _loadSkinId(): string {
     try {
       const stored = localStorage.getItem(SKIN_ID_STORAGE_KEY);
-      if (stored === null) return '84';
+      if (stored === null) return String(SKIN_ID_DEFAULT);
       const val = parseInt(stored, 10);
-      return Number.isFinite(val) ? String(Math.min(84, Math.max(0, val))) : '84';
-    } catch { return '9'; }
+      return Number.isFinite(val)
+        ? String(Math.min(SKIN_ID_MAX, Math.max(SKIN_ID_MIN, val)))
+        : String(SKIN_ID_DEFAULT);
+    } catch { return String(SKIN_ID_DEFAULT); }
   }
 
   private _saveSkinId(id: string): void {
