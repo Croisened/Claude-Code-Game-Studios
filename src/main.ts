@@ -14,6 +14,7 @@ import { ObstacleSystem } from './core/obstacle-system';
 import { ScoreTracker } from './core/score-tracker';
 import { DifficultyCurve } from './core/difficulty-curve';
 import { GameUI, SKIN_ID_STORAGE_KEY, SKIN_ID_DEFAULT, SKIN_ID_MIN, SKIN_ID_MAX } from './core/game-ui';
+import { MilestoneSystem } from './core/milestone-system';
 import { AudioSystem } from './core/audio-system';
 import { LeaderboardService } from './core/leaderboard-service';
 import { RobotNameService } from './core/robot-name-service';
@@ -125,7 +126,23 @@ async function boot(): Promise<void> {
   const leaderboardService = new LeaderboardService();
   const robotNameService   = new RobotNameService();
   robotNameService.load().catch((err) => console.error('[RobotNameService] Failed to load:', err));
-  const gameUI = new GameUI(gsm, scoreTracker, loadSkinById, () => audioSystem.toggleMute(), audioSystem.isMuted, leaderboardService, robotNameService);
+  const milestoneSystem    = new MilestoneSystem(scene, scoreTracker, gsm);
+
+  // ── Resolve player ID (skin) ──────────────────────────────────────────────
+  function resolvePlayerId(): string {
+    const stored = localStorage.getItem(SKIN_ID_STORAGE_KEY);
+    const parsed = stored !== null ? parseInt(stored, 10) : SKIN_ID_DEFAULT;
+    return String(Number.isFinite(parsed) ? Math.min(SKIN_ID_MAX, Math.max(SKIN_ID_MIN, parsed)) : SKIN_ID_DEFAULT);
+  }
+
+  // Wrap loadSkinById so milestone system stays in sync with the active skin ID
+  function loadSkinByIdAndSync(id: string): void {
+    loadSkinById(id);
+    milestoneSystem.setPlayerId(id);
+  }
+  milestoneSystem.setPlayerId(resolvePlayerId()); // sync on boot
+
+  const gameUI = new GameUI(gsm, scoreTracker, loadSkinByIdAndSync, () => audioSystem.toggleMute(), audioSystem.isMuted, leaderboardService, robotNameService, milestoneSystem);
 
   // ── Collision → Death ─────────────────────────────────────────────────────
   runnerSystem.onCollisionDetected(() => {
@@ -135,11 +152,7 @@ async function boot(): Promise<void> {
   // ── Leaderboard submit on death ───────────────────────────────────────────
   gsm.on((e) => {
     if (e.to === GameState.Dead) {
-      const stored   = localStorage.getItem(SKIN_ID_STORAGE_KEY);
-      const parsed   = stored !== null ? parseInt(stored, 10) : SKIN_ID_DEFAULT;
-      const skinId   = Number.isFinite(parsed) ? Math.min(SKIN_ID_MAX, Math.max(SKIN_ID_MIN, parsed)) : SKIN_ID_DEFAULT;
-      const playerId = String(skinId);
-      leaderboardService.submitScore(playerId, scoreTracker.finalScore);
+      leaderboardService.submitScore(resolvePlayerId(), scoreTracker.finalScore);
     }
   });
 
@@ -174,6 +187,7 @@ async function boot(): Promise<void> {
     runnerSystem.update(delta);
     scoreTracker.update(runnerSystem.currentSpeed, delta);
     difficultyCurve.update();
+    milestoneSystem.update(delta);
     gameUI.updateHUD();
     obstacleSystem.update(delta);
     characterRenderer.update(delta);

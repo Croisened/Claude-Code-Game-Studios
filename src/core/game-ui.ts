@@ -18,6 +18,7 @@ import { type GameStateManager, GameState, type StateChangedEvent } from './game
 import { type ScoreTracker } from './score-tracker';
 import { type LeaderboardService, type LeaderboardEntry } from './leaderboard-service';
 import { type RobotNameService } from './robot-name-service';
+import { type MilestoneSystem } from './milestone-system';
 import { LEADERBOARD_CONFIG } from '../config/leaderboard.config';
 
 export const SKIN_ID_STORAGE_KEY = 'roborhapsody_skin_id';
@@ -43,6 +44,7 @@ export class GameUI {
    * @param initialMuted       - Initial mute state for the button label.
    * @param _leaderboardService - Optional leaderboard service for ScoreScreen top-10 display.
    * @param _robotNameService   - Optional robot name service for ID → name lookups.
+   * @param _milestoneSystem    - Optional milestone system for badge display on ScoreScreen.
    */
   constructor(
     private readonly _gsm:                GameStateManager,
@@ -52,6 +54,7 @@ export class GameUI {
     initialMuted:                         boolean = false,
     private readonly _leaderboardService?: LeaderboardService,
     private readonly _robotNameService?:   RobotNameService,
+    private readonly _milestoneSystem?:    MilestoneSystem,
   ) {
     this._hud     = this._createHUD();
     this._overlay = this._createOverlay();
@@ -188,10 +191,13 @@ export class GameUI {
       ? `<div style="font-size:20px;color:#b44fff;text-shadow:0 0 10px #b44fff;letter-spacing:0.1em;">NEW BEST: ${score.toLocaleString()}m</div>`
       : `<div style="font-size:20px;color:#888;letter-spacing:0.1em;">BEST: ${pb.toLocaleString()}m</div>`;
 
+    const milestoneLine = this._buildMilestoneLine();
+
     this._overlay.innerHTML = `
       <div style="position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:48px 24px 0;gap:12px;background:linear-gradient(to bottom,rgba(7,7,13,0.95) 0%,rgba(7,7,13,0) 100%);">
         <div style="font-size:72px;font-weight:bold;color:#00f0ff;text-shadow:0 0 30px #00f0ff,0 0 60px #00f0ff88;">${score.toLocaleString()}m</div>
         ${pbLine}
+        ${milestoneLine}
         <div id="leaderboard-panel" style="margin-top:16px;width:560px;text-align:center;background:rgba(255,255,255,0.13);border-radius:8px;padding:16px 12px;backdrop-filter:blur(4px);">
           <div style="font-size:12px;color:#00f0ff88;letter-spacing:0.3em;">FETCHING LEADERBOARD…</div>
         </div>
@@ -269,6 +275,30 @@ export class GameUI {
     const panel = this._overlay.querySelector<HTMLElement>('#leaderboard-panel');
     if (!panel) return;
     panel.innerHTML = `<div style="font-size:12px;color:#ff4444;letter-spacing:0.2em;">LEADERBOARD UNAVAILABLE</div>`;
+  }
+
+  private _buildMilestoneLine(): string {
+    if (!this._milestoneSystem) return '';
+    const name = this._milestoneSystem.highestName;
+    const next = this._milestoneSystem.nextName;
+    const nextThreshold = this._milestoneSystem.nextThreshold;
+
+    if (name === null) {
+      // No milestone reached yet — show the first target
+      const targetName = next ?? '';
+      const targetDist = nextThreshold ?? 0;
+      return `<div style="font-size:14px;color:#888;letter-spacing:0.15em;">NEXT: ${targetName} — ${targetDist.toLocaleString()}m</div>`;
+    }
+
+    if (next === null) {
+      // At max tier
+      return `<div style="font-size:14px;color:#ffd700;text-shadow:0 0 8px #ffd700;letter-spacing:0.15em;">⬡ THE CORE — MAXIMUM DEPTH REACHED</div>`;
+    }
+
+    return `
+      <div style="font-size:14px;color:#00f0ff;text-shadow:0 0 6px #00f0ff44;letter-spacing:0.15em;">DISTRICT: ${name}</div>
+      <div style="font-size:12px;color:#888;letter-spacing:0.12em;">NEXT: ${next} — ${(nextThreshold ?? 0).toLocaleString()}m</div>
+    `;
   }
 
   private _showHUD(): void {

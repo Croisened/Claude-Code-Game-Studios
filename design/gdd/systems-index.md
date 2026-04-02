@@ -41,6 +41,8 @@ is a deliberate decision in service of the Two-Week Discipline pillar.
 | 16 | Leaderboard Backend | Backend | v1 Ship | Not Started | — | Score & Distance Tracker, NFT Ownership Verification |
 | 17 | Leaderboard UI | UI | v1 Ship | Not Started | — | Leaderboard Backend |
 | 18 | Audio System | Audio | v1 Ship | Not Started | — | Game State Manager |
+| 19 | Distance Milestone Badges | Gameplay | Sprint 3 | Designed | design/gdd/distance-milestone-badges.md | Score & Distance Tracker, Game State Manager, Supabase |
+| 20 | Neon Trail Visual | Visual | Sprint 3 | Not Started | — | Runner System, Character Renderer |
 
 > Systems 1–3 are inferred foundations. Systems 4–18 were either explicitly stated in the
 > concept doc or inferred from dependency analysis. Object Pool and Obstacle Type Registry
@@ -162,12 +164,13 @@ Independent systems at the same layer can be designed in parallel.
 
 | Metric | Count |
 |--------|-------|
-| Total systems identified | 18 |
+| Total systems identified | 20 |
 | Design docs started | 1 |
 | Design docs reviewed | 5 |
 | Design docs approved | 5 |
 | MVP systems designed | 8 / 8 |
 | v1 Ship systems designed | 0 / 10 |
+| Sprint 3 systems designed | 1 / 3 |
 
 ---
 
