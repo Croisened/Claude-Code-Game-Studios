@@ -48,7 +48,7 @@ function startRun(): void {
 }
 
 /** Access the internal pool for white-box tests */
-type PoolSlot = { active: boolean; mesh: THREE.Mesh; typeIndex: number };
+type PoolSlot = { active: boolean; object: THREE.Object3D; typeIndex: number };
 function pool(): PoolSlot[] {
   return (os as unknown as { _pool: PoolSlot[] })._pool;
 }
@@ -94,20 +94,20 @@ describe('spawn', () => {
     // Freeze movement so spawn Z can be checked without drift
     vi.spyOn(rs, 'currentSpeed', 'get').mockReturnValue(0);
     os.update(OBSTACLE_SYSTEM_CONFIG.spawnInterval * 1000 + 16);
-    expect(firstActive()!.mesh.position.z).toBe(-OBSTACLE_SYSTEM_CONFIG.spawnDistance);
+    expect(firstActive()!.object.position.z).toBe(-OBSTACLE_SYSTEM_CONFIG.spawnDistance);
   });
 
   it('spawned obstacle X is a valid lane', () => {
     const VALID_LANES = new Set([LANE_LEFT, LANE_CENTER, LANE_RIGHT]);
     os.update(OBSTACLE_SYSTEM_CONFIG.spawnInterval * 1000 + 16);
-    expect(VALID_LANES.has(firstActive()!.mesh.position.x)).toBe(true);
+    expect(VALID_LANES.has(firstActive()!.object.position.x)).toBe(true);
   });
 
   it('obstacle Y matches the type centerY', () => {
     os.update(OBSTACLE_SYSTEM_CONFIG.spawnInterval * 1000 + 16);
     const slot = firstActive()!;
     const def  = OBSTACLE_TYPE_REGISTRY[slot.typeIndex];
-    expect(slot.mesh.position.y).toBe(def.centerY);
+    expect(slot.object.position.y).toBe(def.centerY);
   });
 
   it('no spawn before → Running', () => {
@@ -127,28 +127,28 @@ describe('obstacle movement', () => {
   it('active obstacles move toward robot each tick', () => {
     os.update(OBSTACLE_SYSTEM_CONFIG.spawnInterval * 1000 + 16);
     const slot    = firstActive()!;
-    const zBefore = slot.mesh.position.z;
+    const zBefore = slot.object.position.z;
     os.update(16);
-    expect(slot.mesh.position.z).toBeGreaterThan(zBefore);
+    expect(slot.object.position.z).toBeGreaterThan(zBefore);
   });
 
   it('obstacle moves at RS.currentSpeed per second', () => {
     os.update(OBSTACLE_SYSTEM_CONFIG.spawnInterval * 1000 + 16);
     const slot  = firstActive()!;
-    const z0    = slot.mesh.position.z;
+    const z0    = slot.object.position.z;
     const speed = rs.currentSpeed;
     // Use 16ms tick; physics delta is clamped but 16ms = 0.016s (well under clamp)
     os.update(16);
-    expect(slot.mesh.position.z).toBeCloseTo(z0 + speed * 0.016, 3);
+    expect(slot.object.position.z).toBeCloseTo(z0 + speed * 0.016, 3);
   });
 
   it('obstacles freeze after → Dead', () => {
     os.update(OBSTACLE_SYSTEM_CONFIG.spawnInterval * 1000 + 16);
     const slot = firstActive()!;
     gsm.transition(GameState.Dead);
-    const zAtDeath = slot.mesh.position.z;
+    const zAtDeath = slot.object.position.z;
     os.update(100);
-    expect(slot.mesh.position.z).toBe(zAtDeath);
+    expect(slot.object.position.z).toBe(zAtDeath);
   });
 });
 
@@ -160,7 +160,7 @@ describe('recycle', () => {
   it('obstacle is deactivated when Z > recycleThreshold', () => {
     os.update(OBSTACLE_SYSTEM_CONFIG.spawnInterval * 1000 + 16);
     const slot = firstActive()!;
-    slot.mesh.position.z = OBSTACLE_SYSTEM_CONFIG.recycleThreshold + 1;
+    slot.object.position.z = OBSTACLE_SYSTEM_CONFIG.recycleThreshold + 1;
     os.update(16);
     expect(slot.active).toBe(false);
   });
@@ -170,7 +170,7 @@ describe('recycle', () => {
     const slot = firstActive()!;
     // Set just under threshold; movement in 1ms tick is negligible but positive,
     // so use a comfortable buffer to keep Z strictly below threshold
-    slot.mesh.position.z = OBSTACLE_SYSTEM_CONFIG.recycleThreshold - 0.5;
+    slot.object.position.z = OBSTACLE_SYSTEM_CONFIG.recycleThreshold - 0.5;
     vi.spyOn(rs, 'currentSpeed', 'get').mockReturnValue(0); // no movement this tick
     os.update(1);
     expect(slot.active).toBe(true);
@@ -220,7 +220,7 @@ describe('minimum gap', () => {
     const active = pool().filter(p => p.active);
     for (let i = 0; i < active.length; i++) {
       for (let j = i + 1; j < active.length; j++) {
-        const gap = Math.abs(active[i].mesh.position.z - active[j].mesh.position.z);
+        const gap = Math.abs(active[i].object.position.z - active[j].object.position.z);
         expect(gap).toBeGreaterThanOrEqual(OBSTACLE_SYSTEM_CONFIG.minObstacleGap);
       }
     }
@@ -238,7 +238,7 @@ describe('pool exhaustion', () => {
     // so the minimum-gap check doesn't block _trySpawn from reaching the pool check
     pool().forEach((p, i) => {
       p.active = true;
-      p.mesh.position.z = -200 - i * 50; // far from spawnZ=-30
+      p.object.position.z = -200 - i * 50; // far from spawnZ=-30
     });
 
     // Direct call to _trySpawn bypasses the timer
@@ -284,7 +284,7 @@ describe('AABB collision', () => {
     // Activate a barrier slot and place it at robot position
     const slot = pool().find(p => p.typeIndex === 0)!;
     slot.active = true;
-    slot.mesh.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[0].centerY, 0);
+    slot.object.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[0].centerY, 0);
     robot.position.set(LANE_CENTER, 0, 0);
     os.update(1);
     expect(spy).toHaveBeenCalled();
@@ -294,7 +294,7 @@ describe('AABB collision', () => {
     const spy = vi.spyOn(rs, 'notifyCollision');
     const slot = pool().find(p => p.typeIndex === 0)!;
     slot.active = true;
-    slot.mesh.position.set(LANE_RIGHT, OBSTACLE_TYPE_REGISTRY[0].centerY, 0);
+    slot.object.position.set(LANE_RIGHT, OBSTACLE_TYPE_REGISTRY[0].centerY, 0);
     robot.position.set(LANE_CENTER, 0, 0); // robot in center, obstacle at right
     os.update(1);
     expect(spy).not.toHaveBeenCalled();
@@ -304,7 +304,7 @@ describe('AABB collision', () => {
     const spy = vi.spyOn(rs, 'notifyCollision');
     const slot = pool().find(p => p.typeIndex === 0)!;
     slot.active = true;
-    slot.mesh.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[0].centerY, 20); // well past robot
+    slot.object.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[0].centerY, 20); // well past robot
     robot.position.set(LANE_CENTER, 0, 0);
     os.update(1);
     expect(spy).not.toHaveBeenCalled();
@@ -316,7 +316,7 @@ describe('AABB collision', () => {
 
     const droneSlot = pool().find(p => p.typeIndex === 1)!;
     droneSlot.active = true;
-    droneSlot.mesh.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[1].centerY, 0);
+    droneSlot.object.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[1].centerY, 0);
     robot.position.set(LANE_CENTER, 0, 0); // crouched, top = 0.9; drone bottom = 1.0
 
     os.update(1);
@@ -329,7 +329,7 @@ describe('AABB collision', () => {
 
     const droneSlot = pool().find(p => p.typeIndex === 1)!;
     droneSlot.active = true;
-    droneSlot.mesh.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[1].centerY, 0);
+    droneSlot.object.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[1].centerY, 0);
     robot.position.set(LANE_CENTER, 0, 0); // standing, top = 1.8; drone range 1.0–1.5 → overlap
 
     os.update(1);
@@ -340,7 +340,7 @@ describe('AABB collision', () => {
     const spy = vi.spyOn(rs, 'notifyCollision');
     const barrierSlot = pool().find(p => p.typeIndex === 0)!;
     barrierSlot.active = true;
-    barrierSlot.mesh.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[0].centerY, 0);
+    barrierSlot.object.position.set(LANE_CENTER, OBSTACLE_TYPE_REGISTRY[0].centerY, 0);
     robot.position.set(LANE_CENTER, 2.7, 0); // base at 2.7 > barrier top 1.0
 
     os.update(1);
