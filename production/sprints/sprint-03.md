@@ -9,7 +9,7 @@
 
 ## Sprint Goal
 
-Ship three engagement hooks that give players a named goal (milestones), a personal rival (ghost), and a better-feeling run (neon trail) — without touching the obstacle spawner or backend.
+Ship two engagement hooks that give players a named goal (milestones) and a better-feeling run (neon trail) — without touching the obstacle spawner or backend.
 
 ---
 
@@ -33,8 +33,6 @@ Ship three engagement hooks that give players a named goal (milestones), a perso
 |----|------|------|-------------|---------------------|
 | S3-01 | **Pre-sprint action items** — add browser smoke test checklist; make all persistent state defaults explicit in config | 0.1d | — | Smoke test doc exists; all localStorage defaults are named constants in config objects |
 | S3-02 | **Distance Milestone Badges** — GDD + implementation; named thresholds (500m, 1000m, 2500m, 5000m) persisted in localStorage; badge shown on death screen | 0.25d | S3-06 | Milestones unlock on crossing threshold; persist across sessions; death screen shows current and next badge |
-| S3-03 | **Personal Best Ghost** — GDD + implementation; sample `{lane, isJumping, timestamp}` every 100ms; replay as low-opacity ghost robot on subsequent runs | 0.5d | S3-02, S3-06 | Ghost appears on run 2+; tracks lane/jump accurately; no collision with ghost; resets when a new PB is set |
-
 ### Should Have
 
 | ID | Task | Est. | Dependencies | Acceptance Criteria |
@@ -46,7 +44,7 @@ Ship three engagement hooks that give players a named goal (milestones), a perso
 | ID | Task | Est. | Dependencies | Acceptance Criteria |
 |----|------|------|-------------|---------------------|
 | S3-05 | Track unplanned tasks in sprint doc as they arise (process improvement from retro) | — | — | No untracked out-of-plan work at sprint close |
-| S3-06 | Write GDDs before implementation for S3-02 and S3-03 | 0.1d | — | Both GDDs meet 8-section standard before code is written |
+| S3-06 | Write GDD before implementation for S3-02 | 0.1d | — | Milestone Badges GDD meets 8-section standard before code is written |
 
 ---
 
@@ -55,7 +53,7 @@ Ship three engagement hooks that give players a named goal (milestones), a perso
 | # | Action | Status |
 |---|--------|--------|
 | 1 | Browser smoke test checklist before rendering commits | → S3-01 |
-| 2 | External service deps listed in sprint plan | N/A this sprint (no external services) |
+| 2 | External service deps listed in sprint plan | Supabase milestones table required — SQL spec in distance-milestone-badges.md |
 | 3 | Explicit persistent state defaults in config | → S3-01 |
 | 4 | Track unplanned tasks in sprint doc as added | → S3-05 (ongoing) |
 
@@ -65,27 +63,26 @@ Ship three engagement hooks that give players a named goal (milestones), a perso
 
 | Risk | Probability | Impact | Mitigation |
 |------|------------|--------|------------|
-| Ghost replay drifts from speed ramp delta-time | Medium | Medium | Sample timestamps with `performance.now()`; replay uses same delta-time logic as live run |
+| Supabase milestones table not yet created | Medium | Medium | SQL spec in GDD; run migration before implementation begins |
 | Neon trail particle cost exceeds frame budget | Low | Low | Use position-queue + opacity fade (not a particle system); max ~20 quads per frame |
-| Ghost mesh draw call doubles robot rendering | Low | Low | Reuse same geometry with cloned low-opacity material; one extra draw call only |
+| Lightning VFX interferes with obstacle visibility | Low | Low | Cap bolt opacity and duration per tuning knobs in GDD |
 
 ---
 
 ## Dependencies on External Factors
 
-- None. All three features are purely client-side with no backend or external service requirements.
+- **Supabase**: `milestones` table must be created before S3-02 implementation. SQL migration spec in `design/gdd/distance-milestone-badges.md` § Dependencies.
 
 ---
 
 ## Build Order
 
 ```
-S3-01 (smoke test + config defaults)   ← immediate, standalone
-S3-06 (GDDs before implementation)     ← before S3-02 and S3-03
+S3-01 (smoke test + config defaults)   ← done ✓
+S3-06 (Milestone Badges GDD)           ← done ✓
 
-S3-02 (Milestone Badges)               ← first feature; simplest, standalone
-S3-04 (Neon Trail)                     ← parallel with S3-02; no dependencies
-  └── S3-03 (Ghost)                    ← after milestones (ghost targets next milestone)
+S3-02 (Milestone Badges impl)          ← next; requires Supabase migration first
+S3-04 (Neon Trail)                     ← parallel; no dependencies
 ```
 
 ---
@@ -93,8 +90,9 @@ S3-04 (Neon Trail)                     ← parallel with S3-02; no dependencies
 ## Definition of Done
 
 - [ ] `tsc --noEmit` passes with zero errors
-- [ ] All existing tests green; new tests added for milestone badge logic and ghost data capture
+- [ ] All existing tests green; new tests added for milestone badge logic
 - [ ] Browser smoke test run before each rendering-adjacent commit
-- [ ] GDDs written for Milestone Badges and Personal Best Ghost before implementation begins
+- [ ] GDD written for Milestone Badges before implementation begins ✓
+- [ ] Supabase `milestones` table migration run before S3-02 implementation
 - [ ] No S1–S2 bugs in delivered features
-- [ ] Game playable end-to-end: menu → run → ghost visible → milestone badge on death → restart
+- [ ] Game playable end-to-end: menu → run → lightning VFX on 1000m → milestone badge on death → restart

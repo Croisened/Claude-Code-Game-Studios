@@ -30,6 +30,8 @@ export class GameUI {
   private readonly _hud:           HTMLElement;
   private readonly _overlay:       HTMLElement;
   private readonly _muteBtn:       HTMLElement;
+  private readonly _alertEl:       HTMLElement;
+  private          _alertTimeout:  ReturnType<typeof setTimeout> | null = null;
   private readonly _gsmListener:   (e: StateChangedEvent) => void;
   private readonly _muteKeyHandler: (e: KeyboardEvent) => void;
   private          _rafId:         number | null = null;
@@ -59,9 +61,11 @@ export class GameUI {
     this._hud     = this._createHUD();
     this._overlay = this._createOverlay();
     this._muteBtn = this._createMuteButton(initialMuted);
+    this._alertEl = this._createAlertElement();
     document.body.appendChild(this._hud);
     document.body.appendChild(this._overlay);
     document.body.appendChild(this._muteBtn);
+    document.body.appendChild(this._alertEl);
 
     // M key toggles mute from anywhere — stored for removal in destroy().
     this._muteKeyHandler = (e: KeyboardEvent): void => {
@@ -85,13 +89,40 @@ export class GameUI {
     this._hud.textContent = `${Math.floor(this._tracker.distance)}m`;
   }
 
+  /**
+   * Flash a large red district alert onto the screen for 1.8s then fade out.
+   * Safe to call during Running state — pointer-events none, non-blocking.
+   */
+  showMilestoneAlert(name: string): void {
+    if (this._alertTimeout !== null) {
+      clearTimeout(this._alertTimeout);
+      this._alertTimeout = null;
+    }
+    this._alertEl.innerHTML = `
+      <div style="font-size:54px;font-weight:900;color:#ff2200;text-shadow:0 0 24px #ff2200,0 0 48px #ff220088;letter-spacing:0.18em;line-height:1.1;">DISTRICT BREACH</div>
+      <div style="font-size:28px;font-weight:700;color:#ff6644;text-shadow:0 0 12px #ff2200;letter-spacing:0.3em;margin-top:6px;">${name.toUpperCase()}</div>
+      <div style="font-size:13px;color:#ff220099;letter-spacing:0.5em;margin-top:10px;">THREAT LEVEL ESCALATED</div>
+    `;
+    this._alertEl.style.opacity = '1';
+    this._alertEl.style.transition = 'none';
+
+    // Hold for 1s then fade over 0.8s
+    this._alertTimeout = setTimeout(() => {
+      this._alertEl.style.transition = 'opacity 0.8s ease-out';
+      this._alertEl.style.opacity    = '0';
+      this._alertTimeout = null;
+    }, 1000);
+  }
+
   destroy(): void {
     this._gsm.off(this._gsmListener);
     window.removeEventListener('keydown', this._muteKeyHandler);
     this._stopHUDLoop();
+    if (this._alertTimeout !== null) clearTimeout(this._alertTimeout);
     this._hud.remove();
     this._overlay.remove();
     this._muteBtn.remove();
+    this._alertEl.remove();
   }
 
   // ── Private ──────────────────────────────────────────────────────────────────
@@ -369,6 +400,27 @@ export class GameUI {
   }
 
   // ── Element factories ─────────────────────────────────────────────────────────
+
+  private _createAlertElement(): HTMLElement {
+    const el = document.createElement('div');
+    el.id = 'milestone-alert';
+    el.style.cssText = `
+      position: fixed;
+      top: 15%;
+      left: 0;
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 50;
+      text-align: center;
+      padding: 0 24px;
+    `;
+    return el;
+  }
 
   private _createHUD(): HTMLElement {
     const el = document.createElement('div');

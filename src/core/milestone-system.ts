@@ -57,12 +57,14 @@ export class MilestoneSystem {
     return next?.threshold ?? null;
   }
 
-  private _highestIndex:         number  = -1;
-  private _active:               boolean = false;
-  private _playerId:             string | null = null;
-  private _previousDistance:     number  = 0;
-  private _lastLightningThreshold: number = 0;
+  private _highestIndex:           number  = -1;
+  private _lastAlertIndex:         number  = -1; // resets each run; tracks alerts fired this run
+  private _active:                 boolean = false;
+  private _playerId:               string | null = null;
+  private _previousDistance:       number  = 0;
+  private _lastLightningThreshold: number  = 0;
 
+  private readonly _unlockCbs:   Array<(name: string) => void> = [];
   private readonly _bolts:       BoltState[];
   private readonly _gsmListener: (e: StateChangedEvent) => void;
 
@@ -96,6 +98,17 @@ export class MilestoneSystem {
   }
 
   /**
+   * Register a callback fired when a new milestone is unlocked.
+   * Receives the milestone display name (e.g. "Industrial Corridor").
+   *
+   * @example
+   * milestoneSystem.onUnlock((name) => gameUI.showMilestoneAlert(name));
+   */
+  onUnlock(cb: (name: string) => void): void {
+    this._unlockCbs.push(cb);
+  }
+
+  /**
    * Set the active player ID for persistence keying.
    * Pass null to revert to guest key.
    */
@@ -122,6 +135,7 @@ export class MilestoneSystem {
     if (to === GameState.Running) {
       this._previousDistance       = 0;
       this._lastLightningThreshold = 0;
+      this._lastAlertIndex         = -1; // reset so all alerts fire again this run
       this._active                 = true;
       return;
     }
@@ -141,15 +155,21 @@ export class MilestoneSystem {
 
   private _checkMilestones(): void {
     const dist = this._tracker.distance;
-    // Iterate highest → lowest to find the best newly-crossed milestone.
+    // Iterate highest → lowest to find the best newly-crossed milestone this run.
     // On a lag spike that crosses multiple thresholds in one frame, the
     // highest applicable tier wins (GDD edge case: single unlock per frame).
     for (let i = this._config.milestones.length - 1; i >= 0; i--) {
       const m = this._config.milestones[i];
-      if (dist >= m.threshold && i > this._highestIndex) {
-        this._highestIndex = i;
-        this._persist();
-        break; // only one new unlock per frame
+      if (dist >= m.threshold && i > this._lastAlertIndex) {
+        // Persist only if this is a new all-time record
+        if (i > this._highestIndex) {
+          this._highestIndex = i;
+          this._persist();
+        }
+        this._lastAlertIndex = i;
+        const name = m.name;
+        for (const cb of this._unlockCbs) cb(name);
+        break; // only one alert per frame
       }
     }
   }
