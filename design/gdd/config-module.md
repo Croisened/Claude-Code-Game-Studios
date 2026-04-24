@@ -351,7 +351,9 @@ paths or structural keys, not tuning targets.
 
 | Path | Default | Notes |
 |------|---------|-------|
-| `renderer.robotGlbPath` | `'assets/art/characters/robot/robot_run.glb'` | Path to rigged robot model |
+| `renderer.robotGlbPath` | `'assets/art/characters/robot/robot_run.glb'` | Geometry + run clip source |
+| `renderer.idleGlbPath` | `'assets/art/characters/robot/robot_idle.glb'` | Idle clip-only GLB; geometry reused from `robotGlbPath` |
+| `renderer.deathGlbPath` | `'assets/art/characters/robot/robot_death.glb'` | Death clip-only GLB; geometry reused from `robotGlbPath` |
 | `renderer.skinTexturePathPattern` | `'assets/art/characters/robot/skins/{id}.png'` | `{id}` is replaced 0–84 at load time |
 | `build.traitsJsonPath` | `'/traits.json'` | Set by build pipeline (S4-03); rarely changed |
 

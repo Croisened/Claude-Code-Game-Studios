@@ -25,6 +25,12 @@ describe('CONFIG', () => {
     expect(CONFIG.renderer.robotGlbPath).toBe(
       'assets/art/characters/robot/robot_run.glb',
     );
+    expect(CONFIG.renderer.idleGlbPath).toBe(
+      'assets/art/characters/robot/robot_idle.glb',
+    );
+    expect(CONFIG.renderer.deathGlbPath).toBe(
+      'assets/art/characters/robot/robot_death.glb',
+    );
     expect(CONFIG.renderer.skinTexturePathPattern).toBe(
       'assets/art/characters/robot/skins/{id}.png',
     );

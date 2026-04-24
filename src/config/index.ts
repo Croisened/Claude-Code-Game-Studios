@@ -27,8 +27,14 @@ export const CONFIG = {
      */
     robotCount: 85,
 
-    /** Path to the rigged robot GLB. */
+    /** Path to the rigged robot GLB (geometry + run clip source). */
     robotGlbPath: 'assets/art/characters/robot/robot_run.glb',
+
+    /** Path to the idle-clip GLB. Clip-only; geometry comes from `robotGlbPath`. */
+    idleGlbPath: 'assets/art/characters/robot/robot_idle.glb',
+
+    /** Path to the death-clip GLB. Clip-only; geometry comes from `robotGlbPath`. */
+    deathGlbPath: 'assets/art/characters/robot/robot_death.glb',
 
     /** Filename pattern for per-robot skin textures; `{id}` substitutes 0–84. */
     skinTexturePathPattern: 'assets/art/characters/robot/skins/{id}.png',
