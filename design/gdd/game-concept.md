@@ -1,364 +1,433 @@
-# Game Concept: Robo Rhapsody — Neon Fugitive
+# Robo Rhapsody Sim — v1 Specification
 
-*Created: 2026-03-27*
-*Status: Draft*
+## Purpose
 
----
+Build a browser-based simulation that runs once per day, pits all 90 Robo Rhapsody robots against each other in a procedurally generated event, and produces a replay anyone can tune into. No wallet connection, no user accounts, no holder verification. Passive, ambient engagement driven by trait-based outcomes and per-event-type leaderboards.
 
-## Elevator Pitch
-
-> It's a cyberpunk endless runner where you sprint through the hostile streets of
-> Neotropolis as your own Robo Rhapsody NFT robot, dodging the city's enforcement
-> systems until the city finally catches you — and then you run again.
+This spec extends an existing Three.js project that already has the rigged robot model, textures, and animations loading correctly.
 
 ---
 
-## Core Identity
+## Core Concept
 
-| Aspect | Detail |
-| ---- | ---- |
-| **Genre** | Endless Runner / Arcade |
-| **Platform** | Web (desktop-first) |
-| **Target Audience** | Robo Rhapsody NFT holders + arcade/runner fans |
-| **Player Count** | Single-player with leaderboard competition |
-| **Session Length** | 2–10 minutes per run; multiple runs per session |
-| **Monetization** | None (brand extension + portfolio piece) |
-| **Estimated Scope** | Small (~2 weeks, solo developer) |
-| **Comparable Titles** | Subway Surfers, Temple Run 2, Canabalt |
+- One daily event, scheduled at a fixed time (e.g., 18:00 UTC).
+- All 90 robots participate. Each has a unique texture keyed to its NFT ID and a trait profile.
+- Event runs to completion in approximately 2 minutes of playback, with three culling stages thinning the field from 90 → 30 → 10 → 1 winner.
+- Simulation is deterministic, pre-computed server-side, and stored as a replay JSON. Clients load the replay and play it back in Three.js.
+- Viewers can "BOOST" one robot per event via the site (honor-system tweet intent). A robot can only be boosted once per event; first click wins.
+- Winner and final standings write to a per-event-type ELO leaderboard.
+- Project X account auto-posts an event announcement and a winner recap.
 
 ---
 
-## Core Fantasy
+## Tech Stack
 
-You are a rogue robot in Neotropolis — a city of chrome, neon, and corporate
-surveillance. The city's entire enforcement infrastructure has locked onto your
-frequency. You don't fight back. You run.
-
-The fantasy is **personalized survival**: the robot sprinting through Neotropolis
-isn't a generic avatar — it's *your* robot, the specific NFT you own, rendered in
-full 3D with your unique texture set. Every near-miss, every impossible dodge, every
-brutal death happens to *your* machine. When you share your score, you're sharing a
-story about your robot.
-
-For players who don't hold an NFT, the demo robot is a teaser — a taste of a world
-where the character could be *theirs*.
+| Layer | Choice | Notes |
+|---|---|---|
+| Rendering | Three.js | Existing project. Skinned mesh with material swaps per robot. |
+| Backend / DB | Supabase | Postgres for metadata, Storage for replay JSON blobs, Edge Functions or pg_cron for scheduled jobs. |
+| Sim runner | Node.js (Supabase Edge Function or separate worker) | Pure JS, shares geometry/trait logic with frontend where possible. |
+| X posting | Twitter API v2 (project account only) or manual for MVP | Intent URLs for user boost posts — no API needed on user side. |
 
 ---
 
-## Unique Hook
+## Assets In Hand
 
-> "It's like Subway Surfers, AND ALSO your playable character is the specific NFT
-> you own — loaded directly from your wallet."
-
-No other endless runner puts a player's verified digital asset in the protagonist
-role. The NFT isn't a cosmetic unlock or a badge — it's the point of the whole game.
-The 90 unique texture variants on the Robo Rhapsody model mean no two holders run
-the same robot.
+- 1 rigged 3D robot model (GLTF/GLB assumed).
+- 90 unique textures, one per NFT ID.
+- Animations: walk, run, jump, die. *(Confirm whether idle, victory, and any additional states exist — see Open Questions.)*
+- Traits per robot, stored/accessible from the NFT metadata source: `full_send`, `degen`, `cipher`, `doubter`, `altruist`, each 1–100, sum ≤ 100.
 
 ---
 
-## Player Experience Analysis (MDA Framework)
+## Database Schema (Supabase)
 
-### Target Aesthetics (What the player FEELS)
+### `robots`
+Static roster. Seeded once from NFT metadata.
+```
+id               int primary key      -- NFT token ID (1–90)
+texture_url      text                 -- path to texture in Supabase Storage or CDN
+full_send        int                  -- 0–100
+degen            int
+cipher           int
+doubter          int
+altruist         int
+created_at       timestamptz default now()
+```
 
-| Aesthetic | Priority | How We Deliver It |
-| ---- | ---- | ---- |
-| **Sensation** (sensory pleasure) | 1 | Neon cyberpunk visual style, robot death animation, speed-blur effects, kinetic obstacle design |
-| **Challenge** (obstacle course, mastery) | 2 | Escalating obstacle density and speed; personal best score pressure |
-| **Fantasy** (make-believe, role-playing) | 3 | Playing as your own NFT robot in a lived-in cyberpunk city |
-| **Expression** (self-expression, creativity) | 4 | Your NFT skin IS your expression — 90 unique identities |
-| **Fellowship** (social connection) | 5 | Leaderboard by robot skin; sharing run scores in the NFT community |
-| **Discovery** (exploration, secrets) | N/A | Not a discovery game — focus is forward momentum |
-| **Narrative** (drama, story arc) | N/A | Lore lives in environment design, not dialogue or cutscenes |
-| **Submission** (relaxation, comfort zone) | N/A | High-tension, not relaxing |
+### `events`
+One row per scheduled daily event.
+```
+id               uuid primary key
+scheduled_at     timestamptz          -- when the replay goes live to viewers
+event_type       text                 -- 'sprint' | 'maze' | 'gauntlet' (v1 set)
+status           text                 -- 'scheduled' | 'boost_open' | 'simulating' | 'ready' | 'live' | 'complete'
+seed             bigint               -- RNG seed used for the sim
+replay_url       text                 -- Supabase Storage path to replay JSON
+winner_robot_id  int references robots(id)
+schema_version   int default 1
+created_at       timestamptz default now()
+```
 
-### Key Dynamics (Emergent player behaviors)
+### `event_participants`
+One row per (event, robot). Lets us query per-event outcomes without parsing replay JSON.
+```
+event_id             uuid references events(id)
+robot_id             int references robots(id)
+final_placement      int                  -- 1 = winner, 2 = runner-up, ..., 90 = first eliminated
+eliminated_at_stage  int                  -- 1, 2, 3, or null if reached final
+boosted              bool default false   -- did someone claim the boost on this robot?
+primary key (event_id, robot_id)
+```
 
-- Players will switch between their robot and a friend's to compare distances
-- NFT holders will screenshot/record their robot's runs and share in community channels
-- Players will naturally develop personal "styles" — learning which obstacles they can
-  consistently dodge vs. which kill them
-- Non-holders who play via demo will be motivated to acquire an NFT to unlock their
-  own skin
+### `boosts`
+One row per boost claim. The unique constraint on (event_id, robot_id) enforces "one boost per robot per event" at the database level.
+```
+id           uuid primary key
+event_id     uuid references events(id)
+robot_id     int references robots(id)
+claimed_at   timestamptz default now()
+client_hash  text                         -- optional: hashed IP/session for rate limiting
+unique (event_id, robot_id)
+```
 
-### Core Mechanics (Systems we build)
-
-1. **Auto-runner with 3-lane movement** — robot runs forward automatically; player
-   swipes/presses to change lanes, jump, or slide
-2. **Obstacle spawner** — procedurally places obstacles (drones, barriers, collapsing
-   structures, neon signage) with difficulty scaling over time
-3. **NFT skin loader** — reads connected wallet, identifies owned Robo Rhapsody tokens,
-   loads the corresponding texture onto the shared .glb robot model
-4. **Death + score screen** — death triggers a brief cinematic animation, then shows
-   distance, score, and robot identity before offering instant restart
-5. **Leaderboard** — global high score table keyed by robot token ID, showing which
-   NFT ran the furthest
-
----
-
-## Player Motivation Profile
-
-### Primary Psychological Needs Served
-
-| Need | How This Game Satisfies It | Strength |
-| ---- | ---- | ---- |
-| **Autonomy** (freedom, meaningful choice) | Choose your robot skin; lane choice and timing are meaningful | Supporting |
-| **Competence** (mastery, skill growth) | Clear personal best metric; escalating difficulty creates real mastery curve | Core |
-| **Relatedness** (connection, belonging) | Playing as your NFT robot ties the game to the Robo Rhapsody community identity | Core |
-
-### Player Type Appeal (Bartle Taxonomy)
-
-- [x] **Achievers** (goal completion, collection, progression) — How: Personal best scores, leaderboard ranks, distance milestones
-- [ ] **Explorers** (discovery, understanding systems, finding secrets) — Not a primary appeal; environment is forward-scrolling
-- [x] **Socializers** (relationships, cooperation, community) — How: NFT community identity; sharing robot runs; leaderboard by token
-- [x] **Killers/Competitors** (domination, PvP, leaderboards) — How: Global leaderboard; direct score comparison by robot skin
-
-### Flow State Design
-
-- **Onboarding curve**: First 30 seconds are slow — sparse obstacles, forgiving timing.
-  Speed and density ramp gradually. No tutorial screen needed; the game teaches through play.
-- **Difficulty scaling**: Obstacle speed and spawn rate increase continuously. New obstacle
-  types are introduced at distance thresholds so the player is always encountering something
-  new but never overwhelmed immediately.
-- **Feedback clarity**: Score displayed live during run. Distance shown prominently on
-  death screen. Personal best highlighted on restart.
-- **Recovery from failure**: Death animation plays (~2 seconds), then score screen appears.
-  Single button press restarts instantly. Time from death to running again: under 5 seconds.
+### `leaderboard`
+Per-robot, per-event-type ELO and stats.
+```
+robot_id              int references robots(id)
+event_type            text
+elo                   int default 1000
+events_participated   int default 0
+wins                  int default 0
+podiums               int default 0                -- top 3 finishes
+updated_at            timestamptz default now()
+primary key (robot_id, event_type)
+```
 
 ---
 
-## Core Loop
+## Event Lifecycle (Daily)
 
-### Moment-to-Moment (30 seconds)
+Times relative to scheduled showtime `T`.
 
-The robot runs forward through Neotropolis automatically. The player watches the environment
-ahead and reacts: swipe left/right to change lanes, press up to jump, press down to slide.
-Obstacles appear with enough lead time to react but not so much that the decision is trivial.
-The satisfaction is in the narrow escape — the half-frame dodge that just barely works.
+| Time | Status | Action |
+|---|---|---|
+| T − 8h | `scheduled` → `boost_open` | Event row created, event type selected, boost window opens, announcement tweet posts. |
+| T − 1h | `boost_open` → `simulating` | Boost window closes. Sim runs, writes replay JSON to Storage, updates `event_participants` and `leaderboard`. |
+| T − 1h → T | `ready` | Site shows countdown to showtime. Replay preloaded. |
+| T | `live` | Replay plays on site. Winner tweet pre-scheduled or triggered. |
+| T + ~3min | `complete` | Playback ends. Results visible on leaderboard. |
 
-### Short-Term (5–15 minutes)
-
-One run ends in death, reveals a score and distance, then restarts. The "one more run"
-pull comes from three sources: beating a personal best, the run that ended unfairly
-(player attribution of skill vs. luck), and curiosity about what obstacles appear at
-higher speeds/distances not yet reached.
-
-### Session-Level (30–120 minutes)
-
-A session is a series of runs with diminishing time between attempts. The player improves
-their personal best, learns obstacle patterns, and develops intuition for the difficulty
-curve. Session ends when they accept their best score for the day or achieve a satisfying
-result. Natural stopping point: a run that clearly feels like their peak for the session.
-
-### Long-Term Progression
-
-At v1 scope, long-term progression is social: climbing the leaderboard relative to other
-Robo Rhapsody holders. The game is "complete" for a given player when they feel they've
-represented their robot well on the board. Future v2 progression could include distance
-milestones that unlock Neotropolis lore fragments.
-
-### Retention Hooks
-
-- **Curiosity**: What does Neotropolis look like at 2x speed? What obstacles appear after
-  1000m that I haven't seen yet?
-- **Investment**: My robot's leaderboard position. If I stop playing, others will pass me.
-- **Social**: "Show me your robot's best run" is a natural community prompt for NFT holders.
-- **Mastery**: The gap between my current best and my theoretical best is always visible.
+All transitions driven by scheduled jobs (Supabase `pg_cron` or Edge Functions on a schedule). No event should require manual intervention in normal operation.
 
 ---
 
-## Game Pillars
+## Trait-to-Behavior Mapping
 
-### Pillar 1: Identity First
+Traits feed into sim-time parameters per robot. Because traits sum to ≤ 100, every robot is specialized in *something* — spec the mapping so no stat is wasted.
 
-Your robot is not an avatar — it is you. The NFT skin is the protagonist. Every design
-decision must reinforce that the player's specific robot is the hero of their run.
+| Trait | Primary effect | Secondary effect | Best event type |
+|---|---|---|---|
+| **Full Send** | Top speed & acceleration | Reduced turning precision; more likely to overshoot | Sprint |
+| **Degen** | Variance multiplier — re-rolls decisions, random burst actions | Can produce wins *or* disasters | Any (wildcard) |
+| **Cipher** | Pathfinding quality, reaction time, shortcut discovery | Faster trap response | Maze |
+| **Doubter** | Trap avoidance, ledge hesitation, fall resistance | Lower top speed | Gauntlet |
+| **Altruist** | *(v1: no solo effect — reserved for future team events)* | Minor "end of life grace" — dies slower when eliminated for a better ragdoll moment | N/A in v1 |
 
-*Design test*: If we're debating whether to add a "random robot" option vs. always
-defaulting to the player's owned token, this pillar says default to the owned token.
-Random robots are for demo mode only.
+Suggested derived sim stats (the sim engine should compute these from raw traits):
+```
+speed         = 0.5 + (full_send / 100) * 0.8
+acceleration  = 0.4 + (full_send / 100) * 1.0 - (doubter / 100) * 0.3
+handling      = 0.5 + (cipher / 100) * 0.5 - (full_send / 100) * 0.2
+pathfinding   = 0.3 + (cipher / 100) * 0.7
+caution       = (doubter / 100) * 1.0
+chaos         = (degen / 100) * 1.0      // probability of random re-roll per decision tick
+```
 
-### Pillar 2: The City Hunts You
-
-Neotropolis is an active antagonist, not a passive backdrop. Obstacles should feel like
-the city's systems are responding to the runner — not like random scenery appearing.
-
-*Design test*: If we're debating between a static barricade obstacle vs. a drone that
-swoops in from the side, this pillar says choose the drone — it feels like the city is
-acting, not just blocking.
-
-### Pillar 3: Death is a Beginning
-
-Dying must feel like motivation to run again, never like punishment or frustration. The
-death screen is a transition, not a failure state. Time from death to back in the run
-must feel fast.
-
-*Design test*: If we're debating a 5-second unskippable death animation vs. a 2-second
-skippable one, this pillar says choose the 2-second skippable — respect the player's
-time and eagerness to retry.
-
-### Pillar 4: Own Your Runner
-
-NFT holders play as the robot they own. Wallet connection is a first-class feature.
-Non-holders get a demo robot that makes the game accessible and serves as a funnel toward
-the collection.
-
-*Design test*: If we're debating whether to let non-holders pick any skin for free vs.
-keeping all 90 skins holder-only, this pillar says holder-only — the skins are the value
-proposition of owning the NFT.
-
-### Pillar 5: Two-Week Discipline
-
-Every feature must be achievable by a solo artist-developer within the two-week build
-window. If a feature cannot ship in time, it is a v2 item — not a reason to delay v1.
-
-*Design test*: If we're debating adding a powerup system vs. shipping with clean obstacle
-dodging only, this pillar says ship clean first. Powerups are v2.
-
-### Anti-Pillars (What This Game Is NOT)
-
-- **NOT a story game**: No cutscenes, no dialogue, no branching narrative. Lore lives
-  in environment design. Adding story systems would compromise Two-Week Discipline and
-  distract from the runner's core tension.
-- **NOT a collection game**: No gacha, no unlocking skins through play, no grinding.
-  You play as the NFT you own. A grinding system would undermine Own Your Runner by
-  suggesting skins can be earned without holding the NFT.
-- **NOT a mobile port**: Designed for web desktop first. Touch controls are a v2 feature.
-  Mobile-first design would compromise control responsiveness and visual complexity.
-- **NOT feature-complete at launch**: A tight, polished core loop ships over a bloated
-  prototype. Scope creep is the primary risk for a two-week solo build.
+Tune the coefficients during testing. The goal: a max Full Send robot clearly wins sprints, a max Cipher robot clearly wins mazes, a max Doubter robot clearly survives gauntlets, and a max Degen robot produces unpredictable but occasionally spectacular runs.
 
 ---
 
-## Inspiration and References
+## Event Types (v1)
 
-| Reference | What We Take From It | What We Do Differently | Why It Matters |
-| ---- | ---- | ---- | ---- |
-| Subway Surfers | 3-lane endless runner structure, obstacle variety, instant restart | Character is player's real NFT, not a licensed IP character | Proves the genre is accessible and widely understood |
-| Temple Run 2 | Escalating speed tension, "one more run" psychology | Web-native, no app install; NFT identity layer | Validates adrenaline-focused runner design |
-| Canabalt | Minimalist runner design, single-action input, atmosphere-first | 3D environment, NFT personalization, leaderboard competition | Shows that tension and simplicity can coexist |
+Ship with three. Rotate pseudo-randomly per day (e.g., deterministic from seed so future rotation can be inspected).
 
-**Non-game inspirations**:
-- Cyberpunk 2077 — Neotropolis visual language: dense neon, corporate surveillance, vertical
-  architecture, chrome and grime in the same frame
-- Ghost in the Shell — robots with identity and soul; the machine as a vessel for selfhood
-- The Robo Rhapsody NFT collection itself — the existing visual vocabulary and character designs
-  are the primary art reference; the game serves the collection, not the reverse
+### 1. Sprint Race
+- Straight-ish course with three checkpoint gates.
+- Stage 1 cull: first 30 through Gate A; gate closes. (Robots behind are eliminated.)
+- Stage 2 cull: first 10 through Gate B; gate closes.
+- Stage 3: final 10 race to the finish line. First to cross wins.
+- **Favored trait:** Full Send.
 
----
+### 2. Maze Run
+- Procedurally generated maze with a known exit.
+- Stage 1 cull: rising acid/water floor after 40 seconds — anything not on elevated path is eliminated.
+- Stage 2 cull: maze walls close in, compressing the field. Top 10 by distance-to-exit survive.
+- Stage 3: remaining robots race to the exit. First out wins.
+- **Favored trait:** Cipher.
 
-## Target Player Profile
+### 3. Obstacle Gauntlet
+- Linear course with traps: swinging hammers, crushing pistons, pit traps, crumbling bridges.
+- Stage 1 cull: first pit section eliminates anyone who falls. Expect ~30 survivors.
+- Stage 2 cull: hammer corridor. Survivors who time it wrong are flattened.
+- Stage 3: final bridge — crumbles under the last 10 robots as they cross. Last robot standing (or first across) wins.
+- **Favored trait:** Doubter.
 
-| Attribute | Detail |
-| ---- | ---- |
-| **Age range** | 20–40 |
-| **Gaming experience** | Casual to mid-core; familiar with mobile runners and browser games |
-| **Time availability** | Short sessions: 5–15 minutes; plays when checking the NFT community |
-| **Platform preference** | Web browser (desktop); already in the NFT ecosystem via wallet |
-| **Current games they play** | Casual browser games, mobile runners; NFT-adjacent games |
-| **What they're looking for** | A reason to engage with their Robo Rhapsody holding beyond static display; community status |
-| **What would turn them away** | Long tutorials, pay-to-win mechanics, required downloads, slow restarts |
-
----
-
-## Technical Considerations
-
-| Consideration | Assessment |
-| ---- | ---- |
-| **Engine / Renderer** | Three.js (core rendering) + enable3d (Rapier physics, game loop, input handling) |
-| **Language** | JavaScript / TypeScript |
-| **Key Technical Challenges** | Web3 wallet connection + NFT ownership verification; Three.js performance with animated .glb + dynamic obstacle spawning; obstacle difficulty curve at high speeds |
-| **Art Style** | 3D stylized — existing Robo Rhapsody model (.glb) with 90 unique texture sets; Neotropolis environment built in Three.js |
-| **Art Pipeline Complexity** | Medium — model and textures already exist; environment and obstacle assets need creation |
-| **Audio Needs** | Moderate — cyberpunk ambient track, footstep/movement SFX, obstacle hit/near-miss audio, death sound |
-| **Networking** | None (leaderboard via simple backend or third-party service) |
-| **Content Volume** | 1 robot model, 90 textures, 3–5 obstacle types, 1 environment style, 1 music track |
-| **Procedural Systems** | Obstacle spawner with distance-based difficulty scaling |
-| **NFT Integration** | EVM wallet connection (MetaMask/WalletConnect); on-chain ownership query for Robo Rhapsody contract; dynamic texture swap on verified token |
+Each event type is implemented as its own simulation module with a shared interface:
+```
+runSim(robots, seed, eventConfig) → Replay
+```
 
 ---
 
-## Risks and Open Questions
+## Replay JSON Format
 
-### Design Risks
+The replay is the single source of truth for playback. It must be fully self-contained — the frontend loads only this file plus robot textures and produces the visual experience.
 
-- **"Just another runner" risk**: Without strong visual juice and the NFT hook landing emotionally,
-  this is a generic browser game. The NFT personalization must feel meaningful, not cosmetic.
-- **Difficulty curve fairness**: At high speeds, obstacle timing must remain learnable. If deaths
-  feel random rather than earned, the "Death is a Beginning" pillar fails.
+```json
+{
+  "schema_version": 1,
+  "event_id": "uuid",
+  "event_type": "sprint",
+  "seed": 1729384756,
+  "duration_seconds": 120,
+  "sample_rate_hz": 10,
+  "arena": {
+    "type": "sprint_v1",
+    "geometry_params": { /* deterministic params to regenerate the arena */ }
+  },
+  "robots": [
+    {
+      "id": 47,
+      "start_position": [x, y, z],
+      "start_rotation": [qx, qy, qz, qw],
+      "boosted": true
+    }
+  ],
+  "stages": [
+    { "name": "gate_a", "end_t": 35.0, "eliminated_robot_ids": [12, 33, ...] },
+    { "name": "gate_b", "end_t": 75.0, "eliminated_robot_ids": [4, 19, ...] },
+    { "name": "finish", "end_t": 118.2, "eliminated_robot_ids": [...] }
+  ],
+  "timeline": [
+    {
+      "t": 0.0,
+      "frames": [
+        { "id": 1, "p": [x,y,z], "r": [qx,qy,qz,qw], "a": "run", "s": 1.0 }
+      ]
+    }
+  ],
+  "final_standings": [47, 3, 22, ...],
+  "winner_robot_id": 47
+}
+```
 
-### Technical Risks
-
-- **Web3 integration complexity**: Wallet connection, chain querying, and ownership verification
-  could consume 2–3 days of the two-week budget. Consider a fallback where users enter their
-  token ID manually if full wallet integration proves too slow.
-- **Three.js performance**: Dynamic obstacle spawning + animated .glb model on mid-range hardware
-  must hit 60fps. Geometry instancing and object pooling will be required.
-- **enable3d/Rapier compatibility**: This combination is less documented than native Three.js.
-  Budget time for debugging the physics-renderer boundary.
-
-### Market Risks
-
-- **NFT audience size**: The Robo Rhapsody collection has ~90 holders as a practical upper bound
-  for the primary audience. This is intentional (brand tool, not mass-market game) but limits
-  organic virality.
-- **NFT sentiment**: Browser games with wallet connect may face friction from players unfamiliar
-  with Web3. Demo mode (no wallet required) mitigates this.
-
-### Scope Risks
-
-- **Solo developer, two weeks**: Every feature added beyond the v1 scope risks the core not
-  shipping. The anti-pillars exist specifically to prevent this.
-- **Environment art**: The robot model exists; the Neotropolis environment does not. Building a
-  compelling cyberpunk lane environment in Three.js is the largest unknown art task.
-
-### Open Questions
-
-- **Which Web3 library?** ethers.js vs. wagmi vs. viem — needs a spike day to evaluate browser
-  compatibility and bundle size. Answer via: 2-hour technical prototype of wallet connect + token
-  query.
-- **Leaderboard backend**: Simple serverless endpoint (Vercel/Netlify function + database) vs.
-  third-party service (e.g., Lootlocker) — answer via: evaluate setup time cost against build window.
-- **Does the obstacle spawner feel fair?** Answer via: core loop prototype in Week 1, playtested
-  by at least 3 people before Week 2 begins.
-
----
-
-## MVP Definition
-
-**Core hypothesis**: "The 3-lane runner loop is fun in isolation — players want to retry after dying."
-
-**Required for MVP (Week 1 target)**:
-1. Robot model (.glb) loads and runs forward in a Three.js scene
-2. 3-lane input (keyboard arrow keys / WASD) with jump and slide
-3. At least one obstacle type spawns, moves toward player, and kills on contact
-4. Death resets the run; distance counter is shown
-
-**Explicitly NOT in MVP** (defer to v1 or v2):
-- Wallet connection and NFT skin loading
-- Death animation
-- Score screen
-- Leaderboard
-- Audio
-- Multiple obstacle types
-- Difficulty scaling
-
-### Scope Tiers
-
-| Tier | Content | Features | Target |
-| ---- | ---- | ---- | ---- |
-| **MVP** | 1 robot skin, 1 obstacle type, 1 environment stub | Runner loop, 3-lane input, death/restart, distance counter | End of Week 1 |
-| **v1 Ship** | 90 NFT skins, 3–5 obstacle types, full Neotropolis environment | Wallet connect, NFT skin loader, death animation, score screen, leaderboard | End of Week 2 |
-| **v2 Ideas** | District zone variety, powerups, Neotropolis lore fragments | Mobile touch controls, run replay, social sharing card generator | Post-launch |
+Notes:
+- Sample at **10 Hz**; lerp/slerp on playback. This keeps file size manageable (~500KB–1MB gzipped per event).
+- `a` = animation state key (`"run"`, `"walk"`, `"jump"`, `"die"`, `"idle"`). `s` = animation speed multiplier.
+- Once a robot is eliminated, stop emitting frames for it (they stay where they fell / ragdoll via a one-shot `die` animation at elimination time).
+- The arena is regenerated client-side from `geometry_params` + `seed` to keep the replay file small. Arena generation must be deterministic.
 
 ---
 
-## Next Steps
+## Simulation Engine Design
 
-- [ ] Run `/map-systems` to decompose Neon Fugitive into individual systems with dependencies and priorities
-- [ ] Run `/design-system` to author per-system GDDs (runner, spawner, NFT skin loader, leaderboard)
-- [ ] Configure Three.js + enable3d stack in CLAUDE.md (`/setup-engine` or manual config)
-- [ ] Spike Web3 wallet connection (ethers.js vs. wagmi — 2-hour prototype)
-- [ ] Prototype core runner loop in Three.js (MVP target: robot runs, input works, death resets)
-- [ ] Playtest MVP with 3 people (`/playtest-report` to capture feedback)
-- [ ] Plan first sprint (`/sprint-plan new`)
+### Principles
+1. **Deterministic.** Same inputs (robots, seed, event type) → identical replay. Use a seedable PRNG (`mulberry32`, `xorshift32`, etc. — not `Math.random`).
+2. **Decoupled from rendering.** The sim does not use Three.js. It runs headlessly, outputs numerical state over time.
+3. **Fixed timestep.** Run sim at ~60 Hz internally, downsample to 10 Hz for the replay.
+4. **Shared code across sim and client.** Trait-to-stat derivation, arena generation, and any constants should live in a shared module so client and sim agree.
+
+### High-level loop (per event module)
+```
+init arena from (seed, eventConfig)
+init 90 robots with derived stats and starting positions
+for tick in 0..maxTicks:
+  for each active robot:
+    update AI decision (pathfinding target, obstacle avoidance)
+    apply movement (respecting speed/accel/handling caps)
+    check collisions & cull conditions
+    if eliminated: mark eliminated_at_stage, stop updating
+  if on sample tick: record frame snapshot
+  if only one robot left or time expired: break
+finalize standings by (placement = eliminated_at_stage then position at end)
+write replay JSON
+```
+
+### Physics / collision
+Keep it minimal. Robots are capsules on a heightfield or simple plane with obstacles. No full rigid-body physics engine needed for v1 — simple kinematic movement with collision checks against arena geometry is sufficient. If a physics engine is added later, `cannon-es` or `rapier` both have Node-compatible builds.
+
+---
+
+## Boost System
+
+### User flow
+1. On the event page during `boost_open` window, each robot tile shows a `BOOST` button.
+2. Clicking opens a `<modal>` with:
+   - Twitter Intent URL pre-filled: `"Boosting Robot #047 in today's Robo Rhapsody Maze Run! 🤖 #RoboRhapsody"`
+   - A "Confirm Boost" button.
+3. Clicking Confirm Boost fires `INSERT INTO boosts (event_id, robot_id, client_hash)`.
+   - On success (201): show "Boosted!" state, disable button globally for that robot.
+   - On unique constraint violation (409): show "Already boosted" — someone got there first.
+4. No verification that the user actually tweeted. Honor system.
+
+### Sim effect
+- If `event_participants.boosted = true` for a robot, apply a small stat nudge during that event's simulation.
+- Suggested magnitude: +3% to the robot's dominant trait-derived stat (speed for Full Send-heavy robots, pathfinding for Cipher-heavy, etc.).
+- Cap the effect small enough that it influences but doesn't determine outcomes. Underdog stories are great; boost-spam wins are not.
+
+### Rate limiting
+- Optional: hash client IP + session cookie into `client_hash`. Limit to N boost-clicks per hour per hash to discourage spam. Not strictly necessary for v1 since one-per-robot-per-event is already a hard cap.
+
+---
+
+## Leaderboard & ELO
+
+### Rating formula
+Use a placement-based ELO extension (Glicko-style or a simplified multi-player ELO). A practical approach:
+
+For each event, compute expected score per robot based on current ELO vs field average, then compare to actual placement-derived score:
+```
+actual_score(placement) = (N - placement) / (N - 1)     // 1.0 for winner, 0.0 for last
+expected_score(robot, field) = 1 / (1 + 10^((field_avg_elo - robot_elo) / 400))
+new_elo = old_elo + K * (actual_score - expected_score)
+```
+Use `K = 32` initially. Tune after observing spread.
+
+### Separation by event type
+Maintain **independent ELO per event type**. Robot #47 can be sprint-rank 3 and maze-rank 82. This is a feature — holders get multiple angles to feel proud from.
+
+### Leaderboard views
+- Overall (average ELO across event types)
+- Per event type
+- Recent form (last 10 events)
+- Most boosts received (lifetime)
+
+---
+
+## Frontend Pages
+
+### `/` — Today's Event
+- Header with countdown to showtime.
+- Grid of 90 robots with texture thumbnails and trait breakdowns. Boost button per tile (disabled if already boosted — reflect this from a realtime Supabase subscription on `boosts` table).
+- Event type badge (Sprint / Maze / Gauntlet).
+- At showtime `T`: grid collapses / tab switches to the Three.js scene; replay begins playback.
+- After `T + duration`: winner highlight, link to leaderboard.
+
+### `/leaderboard`
+- Tabs for Overall / Sprint / Maze / Gauntlet.
+- Sortable table: rank, robot thumbnail, ID, ELO, wins, podiums, events.
+
+### `/robot/:id`
+- Single robot profile. Texture render, trait radar chart, ELO per event type, recent event history.
+
+### `/archive` *(optional for v1, nice to have)*
+- List of past events with their replay files. Clicking plays the replay.
+
+---
+
+## Scheduled Jobs
+
+Implement these as Supabase Edge Functions invoked by `pg_cron`, or as a lightweight Node worker on a schedule (whichever fits the existing infrastructure).
+
+| Job | When | What it does |
+|---|---|---|
+| `schedule_event` | Daily at T−8h | Create new `events` row, choose event type from seeded rotation, set `status = 'boost_open'`, fire announcement tweet. |
+| `run_simulation` | Daily at T−1h | Load robots + boost flags, run sim, upload replay JSON to Storage, populate `event_participants`, update `leaderboard`, set `status = 'ready'`. |
+| `go_live` | Daily at T | Set `status = 'live'`. (Client-side countdown handles most of this, but the status flag lets the archive know.) |
+| `finalize_event` | Daily at T+5min | Set `status = 'complete'`. Fire winner tweet with replay link. |
+
+---
+
+## X (Twitter) Integration
+
+### Project account (automated)
+- **Announcement tweet** at T−8h: "Today at 18:00 UTC — 90 robots. One Maze. Tune in: roborhapsody.xyz 🤖"
+- **Winner tweet** at T+5min: "🏆 Robot #047 takes the Maze Run. Watch the replay: [link]"
+- Rotate 5–10 caption variants per event type so the feed doesn't look botlike.
+- MVP can keep this manual if Twitter API setup is a blocker — the sim still runs unattended either way.
+
+### User boost posts
+- Twitter Intent URLs only. No API on user side.
+- Template: `https://twitter.com/intent/tweet?text=...`
+
+---
+
+## Explicit v1 Scope
+
+### In scope
+- Daily automated event (1 of 3 event types: sprint / maze / gauntlet).
+- All 90 robots participate, trait-based behavior.
+- 3-stage culling per event.
+- Deterministic sim with seed, stored as replay JSON.
+- Browser-based Three.js playback.
+- Boost system: honor-based, one-per-robot-per-event, small sim effect.
+- ELO leaderboard per event type.
+- Automated announcement + winner tweet (or manual if Twitter API delayed).
+
+### Explicitly NOT in v1
+- Wallet connect, holder auth, NFT ownership verification.
+- Team events, Altruist-dependent mechanics (trait is tracked but unused in sim).
+- Live simulation with real-time viewer input (everything is replay playback).
+- Real-time boost effects during playback (boosts lock in before sim runs).
+- Custom celebration animations (use existing animations + particle effects for victory).
+- Twitter API verification of user boost tweets.
+- Mobile-native app.
+- Betting, prediction markets, or any value transfer.
+
+---
+
+## Suggested Build Phases
+
+1. **Schema + seed data.** Create Supabase tables, import the 90 robots and their traits. Verify reads from the existing Three.js project.
+2. **Sim engine skeleton.** Pure-JS sim module with a single event type (sprint, simplest). Outputs replay JSON to a local file. No Supabase integration yet.
+3. **Replay playback.** Add a playback mode to the existing Three.js project that loads a replay JSON and renders it frame-by-frame with interpolation and animation state switching.
+4. **Second and third event types.** Maze and gauntlet. Shake out shared interfaces.
+5. **Supabase wiring.** Storage upload, event lifecycle, `event_participants`, leaderboard updates.
+6. **Frontend event page.** Countdown, robot grid, boost UI, live transition to playback.
+7. **Leaderboard page.**
+8. **Scheduled jobs.** Automate the lifecycle.
+9. **X integration.** Announcement + winner tweets.
+10. **Soft-launch test run.** Run one full end-to-end event unannounced. Watch for performance, ragdolls, tweet formatting. Fix.
+11. **Launch.** Single announcement tweet. Let it find its audience.
+
+---
+
+## Performance Notes
+
+- 90 skinned meshes in Three.js is fine on modern hardware if you share the geometry and only swap the material (texture). Do *not* load 90 separate GLTF files.
+- Consider `InstancedSkinnedMesh` (or manual equivalent) if you see frame drops with 90 individually-clocked animations. A simpler win: only run full animation updates for robots visible in the current camera frustum; for off-screen robots advance the replay state but skip skeleton updates.
+- Keep replay JSON gzipped on the wire. Supabase Storage can serve with `Content-Encoding: gzip` if uploaded pre-compressed.
+- 10 Hz replay sample rate is a deliberate compromise. If motion looks jerky, bump to 15 Hz and accept the file-size hit before going to 30.
+
+---
+
+## Reliability & Safety
+
+- **Deterministic re-run.** Every event stores its seed. If a sim produces a bug or exploit, re-run with a patched engine to produce a corrected replay. Keep the original as `replay_url_original`.
+- **Schema versioning.** The `schema_version` field in replay JSON means future renderer changes don't break old archives.
+- **Boost race conditions.** The `(event_id, robot_id)` unique constraint on `boosts` handles the one-per-robot guarantee at the DB level. The frontend must handle 409 gracefully.
+- **Sim time budget.** Put a hard cap on sim runtime (e.g., 30 seconds wall-clock). If the sim hasn't produced a winner, force-finalize based on current progress. This prevents a stuck sim from missing showtime.
+- **Fallback content.** If the scheduled sim fails, the site should show a clean "event postponed" state rather than a broken countdown. Log the failure and alert.
+
+---
+
+## Open Questions (Please Confirm Before Handoff)
+
+1. **Existing animations.** Confirmed walk/run/jump/die — is there also an idle animation? Any form of victory pose, wave, or celebration? If not, the winner treatment will be built from existing animations + particle effects (confetti, spotlight, slow camera orbit).
+2. **Frontend framework.** Is the existing Three.js project vanilla, React, Vue, or something else? This affects how the event page and leaderboard are structured.
+3. **Hosting.** Where is the frontend deployed today (Vercel, Netlify, self-hosted)? Does it have a backend component, or is it pure static?
+4. **Event showtime.** What time of day works best for the daily event? 18:00 UTC is a reasonable default (morning in the Americas, evening in Europe, late night in Asia), but confirm.
+5. **Trait data source.** Are traits stored on-chain and read live, or cached in a metadata JSON? For v1 we'll seed `robots` once from whatever source is easiest; we can refresh later.
+6. **Twitter API access.** Does the project have (or want) a Twitter Developer account and API keys? If not, winner tweets go manual until it does — not a blocker.
+7. **Replay archive browsing.** Ship `/archive` in v1 or defer? Cheap to build if the data is already there.
+
+---
+
+## Glossary
+
+- **Event** — a single daily simulation run (one of sprint, maze, gauntlet).
+- **Stage** — a culling checkpoint within an event (3 per event).
+- **Replay** — the JSON timeline that drives client-side playback. Source of truth.
+- **Showtime** — the scheduled moment (`T`) when the replay plays on the site.
+- **Boost** — a one-per-robot-per-event flag that nudges a robot's stats slightly. Claimed by viewers during the pre-event window.
