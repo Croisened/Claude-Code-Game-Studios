@@ -1,5 +1,5 @@
 {
-  "name": "robo-rhapsody-neon-fugitive",
+  "name": "robo-rhapsody-sim",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -12,11 +12,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "*",
-    "enable3d": "^0.25.0",
+    "preact": "^10.22.0",
     "three": "^0.168.0"
   },
   "devDependencies": {
+    "@preact/preset-vite": "^2.8.2",
     "@types/three": "^0.168.0",
     "jsdom": "^29.0.1",
     "typescript": "^5.4.0",

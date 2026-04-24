@@ -11,6 +11,8 @@
     "isolatedModules": true,
     "noEmit": true,
     "strict": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
     "types": ["vite/client"],
     "paths": {
       "@/*": ["./src/*"]
