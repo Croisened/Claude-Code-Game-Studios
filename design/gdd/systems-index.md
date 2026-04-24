@@ -34,7 +34,7 @@ is unused in v1).
 | # | System Name | Category | Priority | Status | Design Doc | Depends On |
 |---|-------------|----------|----------|--------|------------|------------|
 | 1 | Config Module | Core | MVP | Approved | design/gdd/config-module.md | — |
-| 2 | Seedable PRNG | Core | MVP | Not Started | — | — |
+| 2 | Seedable PRNG | Core | MVP | Approved | design/gdd/seedable-prng.md | — |
 | 3 | Build / Deploy Pipeline | Core | MVP | Not Started | — | — |
 | 4 | 85-Instance Skinned Mesh Renderer | Rendering | MVP | Not Started | — | Robot Roster Loader |
 | 5 | Animation State Switcher | Rendering | MVP | Not Started | — | 85-Instance Skinned Mesh Renderer, Sim Engine Core |
@@ -193,10 +193,10 @@ is doing.
 |--------|-------|
 | Total systems identified (v1) | 13 |
 | Deferred systems (v1.1+) | 14 |
-| Design docs started | 1 |
-| Design docs reviewed | 1 |
-| Design docs approved | 1 |
-| MVP systems designed | 1 / 13 |
+| Design docs started | 2 |
+| Design docs reviewed | 2 |
+| Design docs approved | 2 |
+| MVP systems designed | 2 / 13 |
 
 ---
 
