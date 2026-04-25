@@ -458,10 +458,13 @@ Per `design-docs.md` rule, each downstream system's GDD must list
 
 **Explicitly NOT a dependency:**
 
-- **Robot Roster Loader (Sprint 5)** — the renderer only needs counts and
-  asset paths from `CONFIG`, not the trait data. The roster loader is a
-  sim concern; the renderer reads its texture pattern directly. Trait
-  data and rendering remain decoupled.
+- **[Robot Roster Loader](./robot-roster-loader.md) (S5-02)** — the renderer
+  only needs counts and asset paths from `CONFIG`, not the trait data. The
+  roster loader is a sim concern; the renderer reads its texture pattern
+  directly. Trait data and rendering remain decoupled. Both compute skin
+  texture paths from the same `CONFIG.renderer.skinTexturePathPattern` —
+  CONFIG is the single source of truth, so the duplication is consistent
+  by construction.
 - **Sim Engine** — the renderer is driven by sim state, not the other way
   around. The sim mutates `RobotInstance.root.position`; the renderer
   just renders. No back-channel.

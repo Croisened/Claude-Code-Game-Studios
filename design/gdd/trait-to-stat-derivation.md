@@ -280,9 +280,10 @@ loader's type guarantees do.
 
 **Downstream (this system is read by):**
 
-- **Robot Roster Loader (S5-02)** — calls `deriveStats(traits)` once per robot
-  during roster construction, attaches the resulting `SimStats` to each
-  `RobotRoster` entry. The loader, not the deriver, owns trait validation.
+- **[Robot Roster Loader](./robot-roster-loader.md) (S5-02)** — calls
+  `deriveStats(traits)` once per robot during roster construction, attaches
+  the resulting `SimStats` to each `RobotRoster` entry. The loader, not the
+  deriver, owns trait validation.
 - **Sim Engine Core (S5-04)** — reads `SimStats` per-robot per-tick. Never
   re-derives; the cached value from roster construction is canonical for the
   lifetime of the event.

@@ -315,7 +315,7 @@ system in the project, directly or transitively. v1 systems that read
 | 85-Instance Skinned Mesh Renderer | `CONFIG.renderer.*` | S4-04 |
 | Animation State Switcher | `CONFIG.animation.*` | S4-05 |
 | [Trait → Stat Derivation](./trait-to-stat-derivation.md) | `CONFIG.sim.traitToStat.*` | S5-01 |
-| Robot Roster Loader | `CONFIG.build.traitsJsonPath`, `CONFIG.renderer.skinTexturePathPattern` | Sprint 5 |
+| [Robot Roster Loader](./robot-roster-loader.md) | `CONFIG.build.traitsJsonPath`, `CONFIG.renderer.skinTexturePathPattern` | S5-02 |
 | Arena Loader | `CONFIG.arena.*` | Sprint 5 |
 | Sim Engine Core | `CONFIG.sim.*` | Sprint 5 |
 | Sprint Race Event Module | `CONFIG.sim.*`, `CONFIG.arena.*` | Sprint 6 |

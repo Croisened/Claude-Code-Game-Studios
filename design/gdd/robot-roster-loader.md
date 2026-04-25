@@ -334,13 +334,14 @@ coefficients, callers must `loadRoster()` again.
   `entry.stats` per tick; never re-derives.
 - **Sprint Race Event Module (S5-05)** — receives the roster from the Sim
   Engine; reads name + stats for AI decisions and elimination bookkeeping.
-- **85-Instance Skinned Mesh Renderer (S4-04)** — currently consumes skin
-  texture paths via its own `asset-loader` `RobotAssetPaths` structure
-  (Sprint 4 design predates the loader). Sprint 6 will reconcile: the
-  renderer's per-id texture array becomes
-  `roster.map(e => e.skinTexturePath)`, removing the duplicated path pattern
-  in the renderer call site. Until then, both compute the same paths from
-  the same CONFIG knob — consistent but redundant.
+- **85-Instance Skinned Mesh Renderer (S4-04)** — *not* a direct dependency
+  by design (per the renderer GDD §6, "Explicitly NOT a dependency"). Both
+  the renderer and the loader compute skin texture paths independently from
+  the same `CONFIG.renderer.skinTexturePathPattern` knob. The single shared
+  source of truth is CONFIG; trait data and rendering remain decoupled. The
+  loader's `skinTexturePath` field exists for sim-side consumers
+  (analytics, debugging, future UI surfaces) that want to know which
+  texture goes with which robot without reaching into render-side internals.
 - **Headless sim harness (S5-06)** — passes a Node-side `traitsSource` that
   reads `public/traits.json` from disk via `node:fs`.
 
@@ -364,9 +365,9 @@ Robot Roster Loader. Updates land alongside the implementation commit:
   now that this GDD exists.
 - `design/gdd/systems-index.md` — flip row 7 status to Approved with the GDD
   path; bump progress tracker to 7/13.
-- `design/gdd/85-instance-renderer.md` — note that texture path derivation
-  will eventually consolidate through the roster loader (forward-looking, no
-  code change in S5-02).
+- `design/gdd/85-instance-renderer.md` — its existing "Explicitly NOT a
+  dependency" note for Robot Roster Loader is still accurate; no change
+  needed beyond updating the GDD link reference.
 
 S5-04, S5-05, S5-06 GDDs do not exist yet and will reference this one when
 authored.

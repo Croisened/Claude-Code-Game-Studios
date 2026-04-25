@@ -372,7 +372,7 @@ addressed in v1.
 
 | System | What it consumes | First read appears in |
 |--------|------------------|------------------------|
-| Robot Roster Loader | `public/traits.json` via `fetch('/traits.json')` | Sprint 5 |
+| [Robot Roster Loader](./robot-roster-loader.md) | `public/traits.json` via injectable `traitsSource` (default `fetch`) | S5-02 |
 | 85-Instance Skinned Mesh Renderer | Robot count + skin texture paths via Roster Loader (transitive) | S4-04 |
 | Sprint Race Event Module | Trait values via Roster Loader (transitive) | Sprint 6 |
 | Every system that runs in the browser | The bundled `dist/index.js` and copied `assets/` (transitive) | All |
