@@ -43,6 +43,15 @@ const TRUNK_COLOR = 0x5c3a1e;       // saddle/oak brown
 const CANOPY_RADIUS = 3.8;
 const CANOPY_COLOR = 0x4f7d3e;      // dense pine-leaf green
 const ORANGE_RADIUS = 0.64;
+
+/**
+ * Offset along world +Z from the finish cell's center to the tree's
+ * trunk. Without this, the winner robot snaps to the cell center which
+ * is the trunk center — they'd visually clip through the trunk. The
+ * offset puts the tree a comfortable ~1.6m from where the winner ends
+ * up standing, with both visible side-by-side from the winner cam.
+ */
+const TREE_OFFSET_Z = 1.6;
 const ORANGE_COLOR = 0xf57b1f;      // ripe fruit
 const ORANGE_EMISSIVE = 0x803400;   // subtle warm glow so they pop in shadow
 const ORANGE_EMISSIVE_INTENSITY = 0.18;
@@ -109,16 +118,31 @@ export function createMazeWalls(layout: MazeLayout): THREE.Group {
  * low-poly look — smooth shading would average normals and lose the
  * silhouette.
  */
+/**
+ * World-space (x, z) where the finish-tree's trunk stands. Offset from
+ * the cell center along +Z (see `TREE_OFFSET_Z`) so the winner — who
+ * snaps to the cell center on arrival — doesn't clip the trunk.
+ *
+ * Used by both `createMazeFinishTree` (to place the visual) and the
+ * winner camera (to compose its frame around tree + winner).
+ */
+export function getMazeFinishTreeWorldPos(
+  layout: MazeLayout,
+): { x: number; z: number } {
+  const { gridCols, gridRows, cellSize } = layout.config;
+  const finishCol = layout.finishCellId % gridCols;
+  const finishRow = Math.floor(layout.finishCellId / gridCols);
+  return {
+    x: (finishCol - (gridCols - 1) / 2) * cellSize,
+    z: (finishRow - (gridRows - 1) / 2) * cellSize + TREE_OFFSET_Z,
+  };
+}
+
 export function createMazeFinishTree(layout: MazeLayout): THREE.Group {
   const group = new THREE.Group();
   group.name = 'maze-finish-tree';
 
-  // Center the tree on the finish cell.
-  const { gridCols, gridRows, cellSize } = layout.config;
-  const finishCol = layout.finishCellId % gridCols;
-  const finishRow = Math.floor(layout.finishCellId / gridCols);
-  const x = (finishCol - (gridCols - 1) / 2) * cellSize;
-  const z = (finishRow - (gridRows - 1) / 2) * cellSize;
+  const { x, z } = getMazeFinishTreeWorldPos(layout);
 
   // Trunk — 8-segment radial cylinder for low-poly facets.
   const trunkGeom = new THREE.CylinderGeometry(

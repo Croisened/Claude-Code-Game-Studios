@@ -9,13 +9,18 @@ import {
   type LeaderResolver,
 } from '@/camera/follow-leader-camera';
 import { createRobotShoulderCamera } from '@/camera/robot-shoulder-camera';
+import { createWinnerCamera } from '@/camera/winner-camera';
 import { createFinishLine } from '@/arena-visuals/finish-line';
-import { createMazeWalls, createMazeFinishTree } from '@/arena-visuals/maze-walls';
+import {
+  createMazeWalls,
+  createMazeFinishTree,
+  getMazeFinishTreeWorldPos,
+} from '@/arena-visuals/maze-walls';
 import { runSim, type EventModule } from '@/sim/engine';
 import { createSprintRaceModule } from '@/sim/sprint-race';
 import { createMazeRaceModule } from '@/sim/maze-race';
 import { generateMazeLayout } from '@/sim/maze';
-import { loadRoster } from '@/sim/robot-roster';
+import { loadRoster, type RobotRoster } from '@/sim/robot-roster';
 import { loadArena, type Arena } from '@/sim/arena';
 import { CONFIG } from '@/config';
 
@@ -107,6 +112,13 @@ interface ArenaSetup {
    * `cameraSettings` — a static camera doesn't need a follower.
    */
   readonly staticCameraPlacement?: StaticCameraPlacement;
+  /**
+   * If set, the App's camera effect can switch to a winner-portrait
+   * camera when the race finishes. World-space (x, z) of the focal
+   * landmark (e.g. the orange tree) so the camera can frame the winner
+   * + landmark together. Sprint races leave this undefined.
+   */
+  readonly winnerCamTarget?: { readonly x: number; readonly z: number };
 }
 
 interface BuildArenaSetupOptions {
@@ -160,6 +172,7 @@ function buildArenaSetup(opts: BuildArenaSetupOptions): ArenaSetup {
       eventModule,
       sceneObjects: [wallsGroup, finishTree],
       staticCameraPlacement,
+      winnerCamTarget: getMazeFinishTreeWorldPos(layout),
     };
   }
 
@@ -187,6 +200,13 @@ export function App() {
   // null = arena cam (static or follow-leader, picked by arena type).
   // number = follow that robot id over-the-shoulder.
   const [cameraTargetId, setCameraTargetId] = useState<number | null>(null);
+  // True after the user has clicked Arena post-race-end. Suppresses the
+  // winner-cam auto-switch so the user can keep the wide static view.
+  // Reset on every Race Again so each new race gets its own portrait.
+  const [winnerCamSuppressed, setWinnerCamSuppressed] = useState(false);
+  // Loaded roster — kept in state so the WinnerCard can read the
+  // winner's name + traits after the race ends. Null while loading.
+  const [roster, setRoster] = useState<RobotRoster | null>(null);
   // Bumped each time the main effect finishes building the scene. The
   // camera effect keys off this so it knows when refs are ready.
   const [sceneVersion, setSceneVersion] = useState(0);
@@ -205,6 +225,8 @@ export function App() {
 
   const handleRaceAgain = () => {
     setSeed(pickRandomSeed());
+    setCameraTargetId(null);
+    setWinnerCamSuppressed(false);
   };
 
   useEffect(() => {
@@ -244,11 +266,16 @@ export function App() {
         // Arena loads first so the renderer can size its ground plane to
         // the race course. Roster loads in parallel — independent fetch.
         const arenaPath = arenaPathFromHash();
-        const [arena, roster] = await Promise.all([
+        const [arena, loadedRoster] = await Promise.all([
           loadArena({ arenaPath }),
           loadRoster(),
         ]);
         if (cancelled) return;
+        // Stash roster for the WinnerCard. Stat scaffold + sim still
+        // use the local `loadedRoster` reference below to keep the
+        // sim setup synchronous with the load.
+        setRoster(loadedRoster);
+        const roster = loadedRoster;
 
         // Sprint races run along +X (length × width oriented). Maze
         // arenas are square grids centered on the origin (length and
@@ -366,16 +393,31 @@ export function App() {
   }, [seed]);
 
   // Camera effect — toggles between arena cam (static / leader-follow,
-  // depending on arena type) and over-the-shoulder for a specific robot.
-  // Re-runs whenever the scene is rebuilt or the user changes the target.
-  // Crucially, switching cameras mid-race does NOT touch the renderer,
-  // sim driver, or bridge: only the camera handle is recreated.
+  // depending on arena type), over-the-shoulder for a specific robot,
+  // and the winner-portrait cam that auto-activates on race-end.
+  // Re-runs whenever the scene is rebuilt, the user changes the
+  // explicit target, the suppression toggle changes, or the race ends
+  // and a winner is announced. Switching cameras mid-race does NOT
+  // touch the renderer, sim driver, or bridge: only the camera handle.
+  //
+  // Mode priority:
+  //   1. Explicit shoulder follow (`cameraTargetId !== null`).
+  //   2. Auto winner portrait (race done + winner + tree target +
+  //      `winnerCamSuppressed === false`).
+  //   3. Static / follow-leader arena cam, depending on arena type.
   useEffect(() => {
     if (sceneVersion === 0) return;
     const refs = sceneRefs.current;
     if (!refs) return;
 
     let handle: { dispose: () => void } | null = null;
+
+    const shouldShowWinner =
+      cameraTargetId === null &&
+      !winnerCamSuppressed &&
+      stats.isDone &&
+      stats.winnerId !== null &&
+      refs.built.winnerCamTarget !== undefined;
 
     if (cameraTargetId !== null) {
       const sh = createRobotShoulderCamera({
@@ -385,13 +427,21 @@ export function App() {
       });
       sh.start();
       handle = sh;
+    } else if (shouldShowWinner) {
+      const wc = createWinnerCamera({
+        camera: refs.camera,
+        renderer: refs.renderer,
+        winnerRobotId: stats.winnerId as number,
+        treeWorldPos: refs.built.winnerCamTarget!,
+      });
+      wc.start();
+      handle = wc;
     } else if (refs.built.staticCameraPlacement) {
       // Snap once and leave the camera alone.
       const p = refs.built.staticCameraPlacement.position;
       const l = refs.built.staticCameraPlacement.lookAt;
       refs.camera.position.set(p.x, p.y, p.z);
       refs.camera.lookAt(l.x, l.y, l.z);
-      // No-op handle — nothing to dispose for a static placement.
       handle = { dispose: () => {} };
     } else {
       const f = createFollowLeaderCamera({
@@ -407,7 +457,13 @@ export function App() {
     return () => {
       handle?.dispose();
     };
-  }, [sceneVersion, cameraTargetId]);
+  }, [
+    sceneVersion,
+    cameraTargetId,
+    winnerCamSuppressed,
+    stats.isDone,
+    stats.winnerId,
+  ]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden' }}>
@@ -425,8 +481,25 @@ export function App() {
       <CameraControl
         targetId={cameraTargetId}
         robotCount={stats.robotCount || CONFIG.renderer.robotCount}
-        onChange={setCameraTargetId}
+        winnerCamActive={
+          cameraTargetId === null &&
+          !winnerCamSuppressed &&
+          stats.isDone &&
+          stats.winnerId !== null
+        }
+        onSetTarget={setCameraTargetId}
+        onForceArena={() => {
+          setCameraTargetId(null);
+          setWinnerCamSuppressed(true);
+        }}
       />
+      {roster &&
+        cameraTargetId === null &&
+        !winnerCamSuppressed &&
+        stats.isDone &&
+        stats.winnerId !== null && (
+          <WinnerCard winner={roster[stats.winnerId]} />
+        )}
     </div>
   );
 }
@@ -434,16 +507,29 @@ export function App() {
 interface CameraControlProps {
   targetId: number | null;
   robotCount: number;
-  onChange: (id: number | null) => void;
+  winnerCamActive: boolean;
+  onSetTarget: (id: number | null) => void;
+  onForceArena: () => void;
 }
 
 /**
- * Top-right toggle: an "Arena" button to clear the override and an input
- * accepting a robot id. Submitting (Enter or blur) parses the number and
- * snaps the camera to follow that robot over-the-shoulder. Empty input
- * (or out-of-range) snaps back to the arena cam.
+ * Top-right toggle: an "Arena" button + a "Robot #" input + an optional
+ * "WIN" indicator that lights up when the auto-winner-cam is active.
+ *
+ * - Arena button clears any shoulder follow AND suppresses the winner
+ *   cam, snapping to the wide static arena view.
+ * - Robot # input parses an id on Enter / blur; in-range values switch
+ *   to the over-the-shoulder cam.
+ * - WIN indicator is purely informational: it pulses while the
+ *   winner-portrait cam is up.
  */
-function CameraControl({ targetId, robotCount, onChange }: CameraControlProps) {
+function CameraControl({
+  targetId,
+  robotCount,
+  winnerCamActive,
+  onSetTarget,
+  onForceArena,
+}: CameraControlProps) {
   const [text, setText] = useState<string>(targetId === null ? '' : String(targetId));
 
   // Keep the input in sync if the parent clears the target externally.
@@ -454,19 +540,24 @@ function CameraControl({ targetId, robotCount, onChange }: CameraControlProps) {
   const apply = () => {
     const trimmed = text.trim();
     if (trimmed === '') {
-      onChange(null);
+      onSetTarget(null);
       return;
     }
     const n = Number.parseInt(trimmed, 10);
     if (!Number.isFinite(n) || n < 0 || n >= robotCount) {
-      onChange(null);
+      onSetTarget(null);
       setText('');
       return;
     }
-    onChange(n);
+    onSetTarget(n);
   };
 
-  const isArenaActive = targetId === null;
+  // Effective mode drives the visual highlighting. Note that "arena"
+  // here just means "not shoulder, not winner" — it covers both the
+  // normal in-race view and the user-forced wide view post-race.
+  const isShoulder = targetId !== null;
+  const isWinner = !isShoulder && winnerCamActive;
+  const isArenaActive = !isShoulder && !isWinner;
 
   return (
     <div
@@ -489,7 +580,7 @@ function CameraControl({ targetId, robotCount, onChange }: CameraControlProps) {
       <span style={{ color: '#8a8a96', letterSpacing: '0.06em' }}>CAM</span>
       <button
         type="button"
-        onClick={() => onChange(null)}
+        onClick={onForceArena}
         style={{
           padding: '3px 8px',
           fontSize: 12,
@@ -503,6 +594,23 @@ function CameraControl({ targetId, robotCount, onChange }: CameraControlProps) {
       >
         Arena
       </button>
+      {isWinner && (
+        <span
+          style={{
+            padding: '3px 8px',
+            fontSize: 12,
+            fontFamily: 'inherit',
+            color: '#0a0a0f',
+            background: '#ff2ec4',
+            border: '1px solid #ff2ec4',
+            borderRadius: 4,
+            letterSpacing: '0.08em',
+            boxShadow: '0 0 12px rgba(255, 46, 196, 0.7)',
+          }}
+        >
+          WIN
+        </span>
+      )}
       <input
         type="text"
         inputMode="numeric"
@@ -680,3 +788,176 @@ const overlayCenter = {
   borderRadius: 8,
   pointerEvents: 'none' as const,
 } as const;
+
+// --- Winner Card ------------------------------------------------------
+//
+// Cyberpunk info panel anchored to the right side of the viewport,
+// vertically centered. Rendered when the winner camera is active. The
+// winner camera frames its subjects toward screen-left, leaving the
+// right side clean for this panel.
+//
+// Palette mirrors the landing page (`src/landing.tsx`):
+//   - bg: #0a0a0f
+//   - text: #e6e6e6 / #8a8a96 dim
+//   - brand pink: #ff2ec4
+//   - accent cyan: #22e6ff
+
+const TRAIT_COLORS: Record<string, string> = {
+  'FULL SEND': '#ff2ec4',
+  DEGEN: '#ffb84a',
+  CIPHER: '#22e6ff',
+  DOUBTER: '#a288ff',
+  ALTRUIST: '#7dff9e',
+};
+
+interface WinnerCardProps {
+  winner: import('@/sim/robot-roster').RobotRosterEntry;
+}
+
+function WinnerCard({ winner }: WinnerCardProps) {
+  const rows: ReadonlyArray<readonly [string, number]> = [
+    ['FULL SEND', winner.traits.fullSend],
+    ['DEGEN', winner.traits.degen],
+    ['CIPHER', winner.traits.cipher],
+    ['DOUBTER', winner.traits.doubter],
+    ['ALTRUIST', winner.traits.altruist],
+  ];
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        right: 24,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        width: 300,
+        padding: '18px 18px 16px',
+        background: 'rgba(10, 10, 15, 0.88)',
+        border: '1px solid #22e6ff',
+        borderRadius: 10,
+        boxShadow:
+          '0 0 24px rgba(34, 230, 255, 0.35), inset 0 0 12px rgba(255, 46, 196, 0.08)',
+        backdropFilter: 'blur(6px)',
+        color: '#e6e6e6',
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        pointerEvents: 'none',
+      }}
+    >
+      {/* Header: WINNER tag + ID */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: 6,
+        }}
+      >
+        <span
+          style={{
+            color: '#ff2ec4',
+            fontSize: 11,
+            letterSpacing: '0.18em',
+            textShadow: '0 0 8px rgba(255, 46, 196, 0.6)',
+          }}
+        >
+          ▍ WINNER
+        </span>
+        <span style={{ color: '#8a8a96', fontSize: 11, letterSpacing: '0.12em' }}>
+          ID&nbsp;
+          <span style={{ color: '#22e6ff' }}>
+            #{String(winner.id).padStart(2, '0')}
+          </span>
+        </span>
+      </div>
+
+      {/* Name */}
+      <div
+        style={{
+          fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
+          fontSize: 20,
+          fontWeight: 700,
+          color: '#fff',
+          letterSpacing: '-0.01em',
+          textShadow: '0 0 12px rgba(255, 46, 196, 0.45)',
+          marginBottom: 14,
+          wordBreak: 'break-word',
+        }}
+      >
+        {winner.name}
+      </div>
+
+      {/* Divider */}
+      <div
+        style={{
+          height: 1,
+          background:
+            'linear-gradient(90deg, transparent, rgba(34, 230, 255, 0.5), transparent)',
+          marginBottom: 12,
+        }}
+      />
+
+      {/* Traits */}
+      <div style={{ fontSize: 11, letterSpacing: '0.06em' }}>
+        {rows.map(([label, value]) => (
+          <TraitBar key={label} label={label} value={value} />
+        ))}
+      </div>
+
+      {/* Footer marker */}
+      <div
+        style={{
+          marginTop: 12,
+          fontSize: 10,
+          color: '#8a8a96',
+          letterSpacing: '0.18em',
+          textAlign: 'right',
+        }}
+      >
+        ROBO_RHAPSODY · v0.1
+      </div>
+    </div>
+  );
+}
+
+interface TraitBarProps {
+  label: string;
+  value: number;
+}
+
+function TraitBar({ label, value }: TraitBarProps) {
+  const color = TRAIT_COLORS[label] ?? '#22e6ff';
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginBottom: 3,
+          color: color,
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ color: '#e6e6e6' }}>{String(value).padStart(2, ' ')}</span>
+      </div>
+      <div
+        style={{
+          width: '100%',
+          height: 4,
+          background: 'rgba(255, 255, 255, 0.06)',
+          borderRadius: 2,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: '100%',
+            background: color,
+            boxShadow: `0 0 8px ${color}`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}

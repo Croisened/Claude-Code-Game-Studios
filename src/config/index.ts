@@ -151,12 +151,19 @@ export const CONFIG = {
        * `pMistake = (1 - stat.pathfinding) * mistakeMaxRate` and takes
        * a wrong turn if the roll passes. `pathfinding` is Cipher-driven
        * (range ~0.3–1.0), so the realized mistake rate spans
-       * `[0, 0.7 × mistakeMaxRate]`. Range 0–0.5; higher = more chaotic
-       * navigation. Robots recover from mistakes via the BFS distance
-       * map — each subsequent decision still has the same chance of
-       * heading optimally back toward the finish.
+       * `[0, 0.7 × mistakeMaxRate]`.
+       *
+       * Tuning: the maze has ~30 true junctions on a typical shortest
+       * path; max-Full-Send robots run ~40% faster than the field. To
+       * make Cipher a meaningful counter to raw speed, low-Cipher
+       * robots need to lose enough time to backtracking that pure-speed
+       * builds can't run away. Empirically, `mistakeMaxRate = 0.6`
+       * gives low-Cipher (~21%) ≈12 wrong turns over a typical race —
+       * roughly 16s of detours, enough to wipe out the speed advantage
+       * of a max-Full-Send / min-Cipher build. High-Cipher (Cipher 90+)
+       * stays under 4% per junction, ~1 mistake per race. Range 0–0.7.
        */
-      mistakeMaxRate: 0.3,
+      mistakeMaxRate: 0.6,
     },
 
     traitToStat: {
