@@ -526,6 +526,9 @@ Agent: "This implementation requires changes to 3 files:
 
 ### Commit Signal
 
+**Rule**: only an unqualified `"approve"` / `"commit"` / `"ready to commit"`
+counts as a commit signal. Anything else is feedback, not authorization.
+
 `git commit` is a special class of file write — it pushes work onto the durable
 audit trail and (after `git push`) onto a public surface. The agent must wait
 for an **explicit, unqualified** signal before committing.

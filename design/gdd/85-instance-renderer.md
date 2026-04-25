@@ -486,8 +486,8 @@ Per `design-docs.md` rule, each downstream system's GDD must list
 
 ## 7. Tuning Knobs
 
-All tunable values live in `CONFIG.renderer` (Config Module, Section 4).
-Documented here for cross-reference.
+All tunable values live in `CONFIG.renderer` (see
+[Config Module GDD](./config-module.md) §4).
 
 | Path | Default | Safe Range | Affects | Notes |
 |------|---------|------------|---------|-------|
