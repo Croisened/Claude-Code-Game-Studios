@@ -524,6 +524,30 @@ Agent: "This implementation requires changes to 3 files:
        For complex features, I recommend B."
 ```
 
+### Commit Signal
+
+`git commit` is a special class of file write — it pushes work onto the durable
+audit trail and (after `git push`) onto a public surface. The agent must wait
+for an **explicit, unqualified** signal before committing.
+
+Counts as a commit signal:
+
+- `"commit"` / `"approve and commit"` / `"go ahead and commit"`
+- `"yes, commit it"` / `"ready to commit"`
+- `"approved"` (when the immediately prior turn proposed a commit)
+
+Does **not** count as a commit signal:
+
+- Positive feedback: `"looking good"`, `"nice work"`, `"this is great"`,
+  `"perfect"` — these are feedback, not approval
+- `"yes"` in response to anything other than an explicit "may I commit?" prompt
+- Implication ("I think we're done here") — the agent must propose the commit
+  and receive an unambiguous yes
+
+Sprint 4 retro AI #1 codified this rule after one misfire in which `"looking
+good"` was parsed as approval. When in doubt, the agent asks: `"Ready for me
+to commit X?"` — a single explicit prompt resolves the ambiguity.
+
 ---
 
 ## 🎭 Agent Personality Guidelines

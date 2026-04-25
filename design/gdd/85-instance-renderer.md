@@ -496,11 +496,6 @@ Documented here for cross-reference.
 | `renderer.frustumCullSkeletons` | `false` | boolean | Whether off-screen instances skip mixer updates | v1.1 perf lever. False by default per spike measurements. |
 | `renderer.targetFps` | 60 | 30 or 60 | Diagnostic threshold for FPS warnings | Informational only. Used by the App Shell's debug HUD. |
 
-> **Cross-reference TODO:** [config-module.md](config-module.md) §4 currently
-> registers only `robotGlbPath` for the renderer. A follow-up edit is required
-> there to add `idleGlbPath` and `deathGlbPath` to the CONFIG.renderer schema.
-> Tracked separately from this GDD's approval.
-
 **Implementation-detail constants** (in `src/renderer/renderer.ts`, not
 `CONFIG`):
 

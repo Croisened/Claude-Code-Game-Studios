@@ -178,8 +178,12 @@ export const CONFIG = {
     /** Total robot instances rendered each event. Spec calls for 85; lower
      *  as performance fallback. Range 10–85. */
     robotCount: 85,
-    /** Path to the rigged robot GLB. */
+    /** Path to the rigged robot GLB (geometry + run clip source). */
     robotGlbPath: 'assets/art/characters/robot/robot_run.glb',
+    /** Path to the idle-clip GLB. Clip-only; geometry comes from `robotGlbPath`. */
+    idleGlbPath: 'assets/art/characters/robot/robot_idle.glb',
+    /** Path to the death-clip GLB. Clip-only; geometry comes from `robotGlbPath`. */
+    deathGlbPath: 'assets/art/characters/robot/robot_death.glb',
     /** Filename pattern for per-robot skin textures; `{id}` substitutes 0–84. */
     skinTexturePathPattern: 'assets/art/characters/robot/skins/{id}.png',
     /** When true, skip skeleton updates for robots outside the camera frustum.
