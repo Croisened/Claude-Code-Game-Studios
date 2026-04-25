@@ -1,27 +1,71 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { mountRendererSpike } from './renderer/renderer-spike';
+import { createRenderer } from './renderer/renderer';
+import { CONFIG } from './config';
 
-interface SpikeStats {
+type LoadStatus = 'loading' | 'ready' | 'error';
+
+interface RendererStats {
   fps: number;
-  drawCalls: number;
   robotCount: number;
-  loadStatus: 'loading' | 'ready' | 'error';
+  loadStatus: LoadStatus;
   errorMessage?: string;
 }
 
 export function App() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [stats, setStats] = useState<SpikeStats>({
+  const [stats, setStats] = useState<RendererStats>({
     fps: 0,
-    drawCalls: 0,
     robotCount: 0,
     loadStatus: 'loading',
   });
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    const dispose = mountRendererSpike(containerRef.current, setStats);
-    return dispose;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const renderer = createRenderer();
+    let cancelled = false;
+    let fpsRaf = 0;
+
+    renderer
+      .mount(container)
+      .then(() => {
+        if (cancelled) return;
+        setStats((s) => ({
+          ...s,
+          robotCount: renderer.getAllInstances().length,
+          loadStatus: 'ready',
+        }));
+
+        // Standalone FPS counter that piggy-backs on rAF without touching
+        // the renderer's internals.
+        let frameCount = 0;
+        let lastSampleAt = performance.now();
+        const sampleFps = () => {
+          if (cancelled) return;
+          frameCount++;
+          const now = performance.now();
+          if (now - lastSampleAt >= 1000) {
+            const fps = (frameCount * 1000) / (now - lastSampleAt);
+            setStats((s) => ({ ...s, fps }));
+            frameCount = 0;
+            lastSampleAt = now;
+          }
+          fpsRaf = requestAnimationFrame(sampleFps);
+        };
+        fpsRaf = requestAnimationFrame(sampleFps);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        setStats((s) => ({ ...s, loadStatus: 'error', errorMessage: msg }));
+      });
+
+    return () => {
+      cancelled = true;
+      if (fpsRaf) cancelAnimationFrame(fpsRaf);
+      renderer.dispose();
+    };
   }, []);
 
   return (
@@ -42,10 +86,9 @@ export function App() {
           pointerEvents: 'none',
         }}
       >
-        <div>S4-04 SPIKE — 85-Instance Renderer</div>
-        <div>Robots: {stats.robotCount}</div>
+        <div>S4-04 — 85-Instance Renderer</div>
+        <div>Robots: {stats.robotCount} / {CONFIG.renderer.robotCount}</div>
         <div>FPS: {stats.fps.toFixed(1)}</div>
-        <div>Draw calls: {stats.drawCalls}</div>
         <div>Status: {stats.loadStatus}</div>
         {stats.errorMessage && (
           <div style={{ color: '#ff5577' }}>Error: {stats.errorMessage}</div>
