@@ -101,6 +101,8 @@ export function Landing() {
           watch, and see if your favorite robot makes it through.
         </p>
 
+        <SneakPeekButton />
+
         <div
           style={{
             display: 'flex',
@@ -152,3 +154,61 @@ const linkStyle = {
   paddingBottom: '2px',
   transition: 'border-color 0.2s ease',
 } as const;
+
+function SneakPeekButton() {
+  const onClick = (e: MouseEvent) => {
+    e.preventDefault();
+    window.location.hash = 'peek';
+  };
+  return (
+    <div
+      style={{
+        marginBottom: '2.5rem',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '0.75rem',
+      }}
+    >
+      <a
+        href="#peek"
+        onClick={onClick}
+        style={{
+          display: 'inline-block',
+          padding: '0.75rem 1.75rem',
+          fontFamily: FONT_STACK,
+          fontSize: '1rem',
+          fontWeight: 600,
+          letterSpacing: '0.05em',
+          color: COLORS.accent,
+          background: 'transparent',
+          border: `1px solid ${COLORS.accent}80`,
+          borderRadius: '999px',
+          textDecoration: 'none',
+          cursor: 'pointer',
+          transition: 'border-color 0.2s ease, background 0.2s ease',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.borderColor = COLORS.accent;
+          (e.currentTarget as HTMLElement).style.background = `${COLORS.accent}14`;
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.borderColor = `${COLORS.accent}80`;
+          (e.currentTarget as HTMLElement).style.background = 'transparent';
+        }}
+      >
+        Sneak Peek →
+      </a>
+      <p
+        style={{
+          fontSize: '0.875rem',
+          color: COLORS.textDim,
+          margin: 0,
+          fontStyle: 'italic',
+        }}
+      >
+        They're training. Take a look.
+      </p>
+    </div>
+  );
+}

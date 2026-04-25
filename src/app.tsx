@@ -17,7 +17,14 @@ interface RendererStats {
 const CYCLE_ORDER: RobotAnimationState[] = ['idle', 'run', 'death'];
 const CYCLE_INTERVAL_MS = 3000;
 
+/** Peek mode hides the dev HUD and shows a minimal training caption +
+ *  back link. Triggered by the '#peek' hash from the Landing page. */
+function isPeekMode(): boolean {
+  return typeof window !== 'undefined' && window.location.hash === '#peek';
+}
+
 export function App() {
+  const peekMode = isPeekMode();
   const containerRef = useRef<HTMLDivElement>(null);
   const [stats, setStats] = useState<RendererStats>({
     fps: 0,
@@ -102,30 +109,121 @@ export function App() {
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <div
-        style={{
-          position: 'absolute',
-          top: 12,
-          left: 12,
-          padding: '8px 12px',
-          background: 'rgba(0, 0, 0, 0.7)',
-          color: '#22e6ff',
-          fontFamily: '"JetBrains Mono", ui-monospace, monospace',
-          fontSize: 13,
-          lineHeight: 1.6,
-          borderRadius: 6,
-          pointerEvents: 'none',
-        }}
-      >
-        <div>S4-05 — Renderer + State Switcher</div>
-        <div>Robots: {stats.robotCount} / {CONFIG.renderer.robotCount}</div>
-        <div>FPS: {stats.fps.toFixed(1)}</div>
-        <div>Status: {stats.loadStatus}</div>
-        <div>Cycle: {stats.cycleState}</div>
-        {stats.errorMessage && (
-          <div style={{ color: '#ff5577' }}>Error: {stats.errorMessage}</div>
-        )}
-      </div>
+      {peekMode ? (
+        <PeekOverlay loadStatus={stats.loadStatus} errorMessage={stats.errorMessage} />
+      ) : (
+        <DevHud stats={stats} />
+      )}
     </div>
   );
 }
+
+interface DevHudProps {
+  stats: RendererStats;
+}
+
+function DevHud({ stats }: DevHudProps) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 12,
+        left: 12,
+        padding: '8px 12px',
+        background: 'rgba(0, 0, 0, 0.7)',
+        color: '#22e6ff',
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        fontSize: 13,
+        lineHeight: 1.6,
+        borderRadius: 6,
+        pointerEvents: 'none',
+      }}
+    >
+      <div>S4-05 — Renderer + State Switcher</div>
+      <div>Robots: {stats.robotCount} / {CONFIG.renderer.robotCount}</div>
+      <div>FPS: {stats.fps.toFixed(1)}</div>
+      <div>Status: {stats.loadStatus}</div>
+      <div>Cycle: {stats.cycleState}</div>
+      {stats.errorMessage && (
+        <div style={{ color: '#ff5577' }}>Error: {stats.errorMessage}</div>
+      )}
+    </div>
+  );
+}
+
+interface PeekOverlayProps {
+  loadStatus: LoadStatus;
+  errorMessage?: string;
+}
+
+function PeekOverlay({ loadStatus, errorMessage }: PeekOverlayProps) {
+  const goBack = (e: MouseEvent) => {
+    e.preventDefault();
+    window.location.hash = '';
+  };
+  return (
+    <>
+      {/* Back link — top-left, low-key */}
+      <a
+        href="#"
+        onClick={goBack}
+        style={{
+          position: 'absolute',
+          top: 16,
+          left: 18,
+          color: 'rgba(230, 230, 230, 0.85)',
+          textDecoration: 'none',
+          fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
+          fontSize: 14,
+          letterSpacing: '0.04em',
+          padding: '6px 10px',
+          background: 'rgba(0, 0, 0, 0.35)',
+          borderRadius: 6,
+          backdropFilter: 'blur(4px)',
+        }}
+      >
+        ← Back
+      </a>
+
+      {/* Training caption — bottom-left, mono, low opacity */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 18,
+          left: 18,
+          fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+          fontSize: 12,
+          letterSpacing: '0.16em',
+          color: 'rgba(230, 230, 230, 0.55)',
+          pointerEvents: 'none',
+        }}
+      >
+        ROBOT TRAINING · DAY 1
+      </div>
+
+      {/* Loading + error states only */}
+      {loadStatus === 'loading' && (
+        <div style={overlayCenter}>Loading robots…</div>
+      )}
+      {loadStatus === 'error' && (
+        <div style={{ ...overlayCenter, color: '#ff5577' }}>
+          Couldn't load the training scene{errorMessage ? `: ${errorMessage}` : '.'}
+        </div>
+      )}
+    </>
+  );
+}
+
+const overlayCenter = {
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
+  fontSize: 16,
+  color: 'rgba(230, 230, 230, 0.85)',
+  background: 'rgba(0, 0, 0, 0.55)',
+  padding: '12px 20px',
+  borderRadius: 8,
+  pointerEvents: 'none' as const,
+} as const;
