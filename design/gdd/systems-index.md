@@ -42,7 +42,7 @@ is unused in v1).
 | 7 | Robot Roster Loader | Core | MVP | Approved | design/gdd/robot-roster-loader.md | Config Module |
 | 8 | Arena Loader + Sprint Arena JSON | Core | MVP | Approved | design/gdd/arena-loader.md | Config Module |
 | 9 | Sim Engine Core | Gameplay | MVP | Approved | design/gdd/sim-engine-core.md | Config Module, Seedable PRNG, Trait → Stat Derivation, Robot Roster Loader |
-| 10 | Sprint Race Event Module | Gameplay | MVP | Not Started | — | Sim Engine Core, Arena Loader |
+| 10 | Sprint Race Event Module | Gameplay | MVP | Approved | design/gdd/sprint-race-event-module.md | Sim Engine Core, Arena Loader |
 | 11 | Camera System | Presentation | MVP | Not Started | — | 85-Instance Skinned Mesh Renderer, Sim Engine Core |
 | 12 | Winner VFX | Presentation | MVP | Not Started | — | Sim Engine Core, 85-Instance Skinned Mesh Renderer |
 | 13 | Preact App Shell | UI | MVP | Not Started | — | Sim Engine Core, Camera System, 85-Instance Skinned Mesh Renderer, Winner VFX |

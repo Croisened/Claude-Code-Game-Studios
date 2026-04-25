@@ -25,6 +25,33 @@ export const CONFIG = {
      * v1 starting values lifted from design/gdd/game-concept.md §Trait-to-Behavior
      * Mapping; tuning happens during Sprint 6+ when behavior is observable.
      */
+    /**
+     * Sprint Race event tunables consumed by `createSprintRaceModule`
+     * (`src/sim/sprint-race.ts`). See design/gdd/sprint-race-event-module.md
+     * §7 for ranges and tuning rationale. v1 starting values are calibrated
+     * for arena-01 (240 m course) to produce a ~40–50 s race at 60 Hz.
+     */
+    sprintRace: {
+      /**
+       * Course-velocity baseline in m/s. Multiplied by `stat.speed`
+       * (range ~0.5–1.3) and per-tick modifiers. Range 1–20.
+       */
+      baseSpeedMps: 6,
+
+      /**
+       * Multiplier on velocity from caution. Effective slowdown is
+       * `stat.caution * cautionScale`, capped by `stat.caution ≤ 1`.
+       * Range 0–0.5.
+       */
+      cautionScale: 0.2,
+
+      /**
+       * Per-tick velocity jitter amplitude scaled by chaos. Effective jitter
+       * is `±stat.chaos * chaosScale`. Range 0–0.5.
+       */
+      chaosScale: 0.15,
+    },
+
     traitToStat: {
       speed: {
         base: 0.5,
