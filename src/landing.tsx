@@ -155,11 +155,50 @@ const linkStyle = {
   transition: 'border-color 0.2s ease',
 } as const;
 
-function SneakPeekButton() {
+interface PeekButtonProps {
+  hash: string;
+  label: string;
+}
+
+function PeekButton({ hash, label }: PeekButtonProps) {
   const onClick = (e: MouseEvent) => {
     e.preventDefault();
-    window.location.hash = 'peek';
+    window.location.hash = hash;
   };
+  return (
+    <a
+      href={`#${hash}`}
+      onClick={onClick}
+      style={{
+        display: 'inline-block',
+        padding: '0.75rem 1.75rem',
+        fontFamily: FONT_STACK,
+        fontSize: '1rem',
+        fontWeight: 600,
+        letterSpacing: '0.05em',
+        color: COLORS.accent,
+        background: 'transparent',
+        border: `1px solid ${COLORS.accent}80`,
+        borderRadius: '999px',
+        textDecoration: 'none',
+        cursor: 'pointer',
+        transition: 'border-color 0.2s ease, background 0.2s ease',
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = COLORS.accent;
+        (e.currentTarget as HTMLElement).style.background = `${COLORS.accent}14`;
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = `${COLORS.accent}80`;
+        (e.currentTarget as HTMLElement).style.background = 'transparent';
+      }}
+    >
+      {label}
+    </a>
+  );
+}
+
+function SneakPeekButton() {
   return (
     <div
       style={{
@@ -170,35 +209,10 @@ function SneakPeekButton() {
         gap: '0.75rem',
       }}
     >
-      <a
-        href="#peek"
-        onClick={onClick}
-        style={{
-          display: 'inline-block',
-          padding: '0.75rem 1.75rem',
-          fontFamily: FONT_STACK,
-          fontSize: '1rem',
-          fontWeight: 600,
-          letterSpacing: '0.05em',
-          color: COLORS.accent,
-          background: 'transparent',
-          border: `1px solid ${COLORS.accent}80`,
-          borderRadius: '999px',
-          textDecoration: 'none',
-          cursor: 'pointer',
-          transition: 'border-color 0.2s ease, background 0.2s ease',
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.borderColor = COLORS.accent;
-          (e.currentTarget as HTMLElement).style.background = `${COLORS.accent}14`;
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.borderColor = `${COLORS.accent}80`;
-          (e.currentTarget as HTMLElement).style.background = 'transparent';
-        }}
-      >
-        Sneak Peek →
-      </a>
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <PeekButton hash="peek" label="Sprint Race →" />
+        <PeekButton hash="peek-maze" label="Maze Race →" />
+      </div>
       <p
         style={{
           fontSize: '0.875rem',

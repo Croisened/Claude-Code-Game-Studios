@@ -15,8 +15,8 @@
 
 import { CONFIG } from '@/config';
 
-const SUPPORTED_ARENA_TYPES = ['sprint-race'] as const;
-const REQUIRED_TOP_LEVEL_FIELDS = [
+const SUPPORTED_ARENA_TYPES = ['sprint-race', 'maze-race'] as const;
+const REQUIRED_TOP_LEVEL_FIELDS_SPRINT = [
   'id',
   'type',
   'length',
@@ -24,12 +24,27 @@ const REQUIRED_TOP_LEVEL_FIELDS = [
   'startGrid',
   'gates',
 ] as const;
+const REQUIRED_TOP_LEVEL_FIELDS_MAZE = [
+  'id',
+  'type',
+  'length',
+  'width',
+  'mazeConfig',
+] as const;
 const REQUIRED_GATE_FIELDS = ['name', 'x', 'cullToCount'] as const;
 const REQUIRED_START_GRID_FIELDS = [
   'lanes',
   'rows',
   'laneSpacing',
   'rowSpacing',
+] as const;
+const REQUIRED_MAZE_CONFIG_FIELDS = [
+  'cellSize',
+  'gridCols',
+  'gridRows',
+  'entranceCount',
+  'finishCol',
+  'finishRow',
 ] as const;
 const MIN_GATE_COUNT = 2;
 const MIN_ROSTER_COVERAGE = 85;
@@ -49,6 +64,30 @@ export interface StartGrid {
   readonly rowSpacing: number;
 }
 
+export interface MazeArenaConfig {
+  readonly cellSize: number;
+  readonly gridCols: number;
+  readonly gridRows: number;
+  readonly entranceCount: number;
+  readonly finishCol: number;
+  readonly finishRow: number;
+}
+
+/**
+ * Arena variants:
+ * - `sprint-race` arenas have a `startGrid` and a non-empty `gates` array.
+ *   `mazeConfig` is undefined.
+ * - `maze-race` arenas have a `mazeConfig`. They synthesize a single-cell
+ *   `startGrid` and an empty `gates` array so the rest of the codebase can
+ *   read `arena.startGrid` and `arena.gates` without branching, but neither
+ *   is consulted by the maze-race event module.
+ *
+ * `maxTicks` is an optional per-arena override of the engine's safety
+ * cap on simulation length. If undefined, the engine falls back to its
+ * default (`CONFIG.sim.tickRateHz × 120` = 2 minutes). Mazes typically
+ * need a longer cap because winding paths + staging march can exceed
+ * the sprint-race default.
+ */
 export interface Arena {
   readonly id: string;
   readonly type: ArenaType;
@@ -56,14 +95,21 @@ export interface Arena {
   readonly width: number;
   readonly startGrid: StartGrid;
   readonly gates: readonly Gate[];
+  readonly mazeConfig?: MazeArenaConfig;
+  readonly maxTicks?: number;
 }
 
 export interface LoadArenaOptions {
   readonly arenaSource?: () => Promise<unknown>;
+  /**
+   * Override the arena JSON path. Ignored when `arenaSource` is supplied
+   * (the test seam wins). Defaults to `CONFIG.arena.defaultArenaPath`.
+   */
+  readonly arenaPath?: string;
 }
 
-function defaultArenaSource(): Promise<unknown> {
-  return fetch(CONFIG.arena.defaultArenaPath).then((r) => r.json());
+function defaultArenaSource(arenaPath?: string): Promise<unknown> {
+  return fetch(arenaPath ?? CONFIG.arena.defaultArenaPath).then((r) => r.json());
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -234,19 +280,81 @@ function isSupportedType(value: unknown): value is ArenaType {
   );
 }
 
-function buildArena(payload: Record<string, unknown>): Arena {
-  for (const field of REQUIRED_TOP_LEVEL_FIELDS) {
-    if (!(field in payload)) {
-      throw new Error(`Arena missing required field ${field}`);
+function validateMazeConfig(raw: unknown): MazeArenaConfig {
+  if (!isRecord(raw)) {
+    throw new Error(
+      `Arena field mazeConfig must be an object, got ${typeof raw}`,
+    );
+  }
+  for (const field of REQUIRED_MAZE_CONFIG_FIELDS) {
+    if (!(field in raw)) {
+      throw new Error(`Arena missing required field mazeConfig.${field}`);
     }
   }
-  const id = ensureNonEmptyString(payload.id, 'id');
+  const cellSize = ensurePositive(
+    ensureFiniteNumber(raw.cellSize, 'mazeConfig.cellSize'),
+    'mazeConfig.cellSize',
+  );
+  const gridCols = ensurePositiveInteger(raw.gridCols, 'mazeConfig.gridCols');
+  const gridRows = ensurePositiveInteger(raw.gridRows, 'mazeConfig.gridRows');
+  if (gridCols < 3 || gridRows < 3) {
+    throw new Error(
+      `Arena mazeConfig grid must be at least 3x3, got ${gridCols}x${gridRows}`,
+    );
+  }
+  const entranceCount = ensurePositiveInteger(
+    raw.entranceCount,
+    'mazeConfig.entranceCount',
+  );
+  const perimeter = 2 * gridCols + 2 * gridRows - 4;
+  if (entranceCount > perimeter) {
+    throw new Error(
+      `Arena mazeConfig.entranceCount (${entranceCount}) exceeds perimeter cell count (${perimeter})`,
+    );
+  }
+  const finishCol = ensureFiniteNumber(raw.finishCol, 'mazeConfig.finishCol');
+  const finishRow = ensureFiniteNumber(raw.finishRow, 'mazeConfig.finishRow');
+  if (
+    !Number.isInteger(finishCol) ||
+    finishCol < 0 ||
+    finishCol >= gridCols ||
+    !Number.isInteger(finishRow) ||
+    finishRow < 0 ||
+    finishRow >= gridRows
+  ) {
+    throw new Error(
+      `Arena mazeConfig finish (${finishCol}, ${finishRow}) outside grid (${gridCols}x${gridRows})`,
+    );
+  }
+  return Object.freeze({
+    cellSize,
+    gridCols,
+    gridRows,
+    entranceCount,
+    finishCol,
+    finishRow,
+  });
+}
+
+function buildArena(payload: Record<string, unknown>): Arena {
+  if (!('type' in payload)) {
+    throw new Error('Arena missing required field type');
+  }
   if (!isSupportedType(payload.type)) {
     throw new Error(
       `Arena type ${JSON.stringify(payload.type)} is not supported in v1 (supported: [${SUPPORTED_ARENA_TYPES.join(', ')}])`,
     );
   }
-  const type = payload.type;
+  const type: ArenaType = payload.type;
+
+  const required =
+    type === 'maze-race' ? REQUIRED_TOP_LEVEL_FIELDS_MAZE : REQUIRED_TOP_LEVEL_FIELDS_SPRINT;
+  for (const field of required) {
+    if (!(field in payload)) {
+      throw new Error(`Arena missing required field ${field}`);
+    }
+  }
+  const id = ensureNonEmptyString(payload.id, 'id');
   const length = ensurePositive(
     ensureFiniteNumber(payload.length, 'length'),
     'length',
@@ -255,17 +363,54 @@ function buildArena(payload: Record<string, unknown>): Arena {
     ensureFiniteNumber(payload.width, 'width'),
     'width',
   );
+
+  // Optional per-arena maxTicks override. Bounded so a typo in the JSON
+  // can't blow out memory by recording 30-minute pose-frame histories.
+  let maxTicks: number | undefined;
+  if (payload.maxTicks !== undefined) {
+    maxTicks = ensurePositiveInteger(payload.maxTicks, 'maxTicks');
+    const HARD_CAP = 60 * 300; // 5 minutes at 60Hz — generous upper bound
+    if (maxTicks > HARD_CAP) {
+      throw new Error(
+        `Arena maxTicks (${maxTicks}) exceeds the hard cap of ${HARD_CAP} ticks (5 minutes at 60Hz)`,
+      );
+    }
+  }
+
+  if (type === 'maze-race') {
+    const mazeConfig = validateMazeConfig(payload.mazeConfig);
+    // Synthesize stubs so downstream consumers can read fields uniformly;
+    // they're never consulted by the maze-race event module.
+    const startGrid: StartGrid = Object.freeze({
+      lanes: 1,
+      rows: 1,
+      laneSpacing: 1,
+      rowSpacing: 1,
+    });
+    const gates: readonly Gate[] = Object.freeze([]);
+    return Object.freeze({
+      id,
+      type,
+      length,
+      width,
+      startGrid,
+      gates,
+      mazeConfig,
+      maxTicks,
+    });
+  }
+
   const startGrid = validateStartGrid(payload.startGrid, width);
   const gridCapacity = startGrid.lanes * startGrid.rows;
   const gates = validateGates(payload.gates, length, gridCapacity);
-  return Object.freeze({ id, type, length, width, startGrid, gates });
+  return Object.freeze({ id, type, length, width, startGrid, gates, maxTicks });
 }
 
 /**
  * Load an arena from JSON. See arena-loader.md for the full contract.
  */
 export async function loadArena(opts: LoadArenaOptions = {}): Promise<Arena> {
-  const source = opts.arenaSource ?? defaultArenaSource;
+  const source = opts.arenaSource ?? (() => defaultArenaSource(opts.arenaPath));
   let payload: unknown;
   try {
     payload = await source();

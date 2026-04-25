@@ -37,9 +37,38 @@ import type { Renderer } from '@/renderer/renderer';
 /** Clamps tab-throttle skip-ahead — matches renderer + bridge convention. */
 const MAX_DT_SECONDS = 0.1;
 
+/**
+ * Per-frame "leader" resolver. Returns the world (x, z) the camera should
+ * frame this frame. Default is "max-X across all renderer instances",
+ * which is correct for sprint races where forward is monotonic +X.
+ *
+ * Maze races override this with a closure that picks the active robot
+ * with the smallest BFS distance to the maze finish cell — there is no
+ * single world axis that monotonically tracks "progress" in a maze.
+ */
+export type LeaderResolver = (renderer: Renderer) => { x: number; z: number };
+
+/**
+ * Subset of `CONFIG.camera.follow` that can be overridden per arena.
+ * Maze passes a flatter overhead framing; sprint uses the default
+ * spectator-side angle.
+ */
+export interface FollowCameraSettings {
+  readonly aheadOffsetX: number;
+  readonly offsetY: number;
+  readonly offsetZ: number;
+  readonly lookAtAheadX: number;
+  readonly lookAtY: number;
+  readonly lerpRatePerSecond: number;
+}
+
 export interface FollowLeaderCameraOptions {
   readonly camera: THREE.PerspectiveCamera;
   readonly renderer: Renderer;
+  /** Override the default "max-X active instance" leader rule. */
+  readonly leaderResolver?: LeaderResolver;
+  /** Override the per-arena framing knobs. Defaults to `CONFIG.camera.follow`. */
+  readonly settings?: FollowCameraSettings;
   /** Test seam: rAF impl. Defaults to `globalThis.requestAnimationFrame`. */
   readonly raf?: (cb: FrameRequestCallback) => number;
   /** Test seam: cancelAnimationFrame impl. */
@@ -86,7 +115,7 @@ export function createFollowLeaderCamera(
       return Date.now();
     });
 
-  const cfg = CONFIG.camera.follow;
+  const cfg: FollowCameraSettings = opts.settings ?? CONFIG.camera.follow;
 
   let rafId: number | null = null;
   let lastTimeMs: number | null = null;
@@ -96,14 +125,13 @@ export function createFollowLeaderCamera(
   let initialised = false;
 
   /**
-   * Find the leader's full (x, z). The leader is the highest-X active
-   * instance; the lateral z is read so the camera tracks lane drift
-   * (separation force, future lane-change AI). Without z tracking, a
-   * leader that drifts off-axis appears at frame edges instead of
-   * centered.
+   * Default sprint-race leader rule: highest-X active instance. The
+   * lateral z is read so the camera tracks lane drift (separation force,
+   * future lane-change AI). Without z tracking, a leader that drifts
+   * off-axis appears at frame edges instead of centered.
    */
-  function findLeaderXZ(): { x: number; z: number } {
-    const instances = renderer.getAllInstances();
+  function defaultLeaderResolver(r: Renderer): { x: number; z: number } {
+    const instances = r.getAllInstances();
     if (instances.length === 0) return { x: 0, z: 0 };
     let maxX = -Infinity;
     let leaderZ = 0;
@@ -118,6 +146,12 @@ export function createFollowLeaderCamera(
     // current camera placement so we don't drift to garbage values.
     if (!Number.isFinite(maxX)) return { x: camera.position.x, z: 0 };
     return { x: maxX, z: leaderZ };
+  }
+
+  const leaderResolver = opts.leaderResolver ?? defaultLeaderResolver;
+
+  function findLeaderXZ(): { x: number; z: number } {
+    return leaderResolver(renderer);
   }
 
   function tick(): void {

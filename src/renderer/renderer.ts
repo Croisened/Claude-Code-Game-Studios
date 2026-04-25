@@ -143,6 +143,12 @@ export interface CreateRendererOptions {
    * finish line.
    */
   groundExtents?: GroundExtents;
+  /**
+   * Override the ground material's base color (sRGB hex, e.g. `0x8aa372`
+   * for the maze's orange-grove green). Defaults to `GROUND_COLOR` —
+   * the dark blue-gray that matches the sprint-race sky.
+   */
+  groundColor?: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -227,7 +233,7 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(groundExtents.sizeX, groundExtents.sizeZ),
       new THREE.MeshStandardMaterial({
-        color: GROUND_COLOR,
+        color: opts.groundColor ?? GROUND_COLOR,
         roughness: GROUND_ROUGHNESS,
       }),
     );

@@ -85,6 +85,80 @@ export const CONFIG = {
       lateralBoundMargin: 0.5,
     },
 
+    /**
+     * Maze Race event tunables consumed by `createMazeRaceModule`
+     * (`src/sim/maze-race.ts`). v1 starting values are calibrated for
+     * arena-02 (21x21 grid × 4 m cells = 84 m square) so a typical
+     * shortest path of ~25 cells finishes in 25–40 seconds at 60 Hz.
+     */
+    mazeRace: {
+      /**
+       * Course-velocity baseline in m/s. Lower than sprint-race because
+       * robots steer along grid axes (with frequent direction changes
+       * at corners), so an apples-to-apples baseline reads slower.
+       * Range 1–10.
+       */
+      baseSpeedMps: 4.5,
+
+      /** Multiplier on velocity from caution. Range 0–0.5. */
+      cautionScale: 0.2,
+
+      /** Per-tick velocity jitter amplitude scaled by chaos. Range 0–0.5. */
+      chaosScale: 0.15,
+
+      /**
+       * Distance below which a robot is "at" its current target cell and
+       * advances to the next cell on its shortest path. Smaller = sharper
+       * corners (robots overshoot less); larger = smoother but cuts
+       * corners visually. 0.4–0.8 reads natural at cellSize=4 m.
+       */
+      cellArrivalRadius: 0.6,
+
+      /**
+       * Boids-style 2D separation push. Each tick every active robot is
+       * pushed radially away from active neighbors inside `separationRadius`.
+       * Force magnitude falls off linearly from `separationForceMps` at
+       * distance 0 to 0 at the radius. Mirrors sprint-race's separation
+       * rule but operates in both X and Z (maze motion is multi-axial).
+       *
+       * Determinism: pose state is read in id-ascending order, matching
+       * the engine's iteration. No `rng()` calls are made.
+       */
+      separationRadius: 1.4,
+      separationForceMps: 5.0,
+      /**
+       * |dist| below which two robots are treated as coincident. Their
+       * radial push goes to zero as `dist → 0`, so coincident robots
+       * would phase through each other; this threshold triggers a
+       * deterministic id-based tiebreak (smaller id pushes +X, larger
+       * pushes -X) that nudges them onto different sides within a few
+       * ticks.
+       */
+      separationCoincidentEps: 0.05,
+
+      /**
+       * Margin from each cell's wall when clamping the post-separation
+       * position. Effective corridor half-width = `cellSize/2 - wallMargin`.
+       * Larger margin → wider visual gap between robots and walls but
+       * narrower passable corridor. 0.55–0.7 reads natural at the
+       * default `robotScale = 2`.
+       */
+      wallMargin: 0.6,
+
+      /**
+       * Cap on per-junction wrong-turn probability. At a junction with
+       * an alternative to the optimal direction, robot rolls
+       * `pMistake = (1 - stat.pathfinding) * mistakeMaxRate` and takes
+       * a wrong turn if the roll passes. `pathfinding` is Cipher-driven
+       * (range ~0.3–1.0), so the realized mistake rate spans
+       * `[0, 0.7 × mistakeMaxRate]`. Range 0–0.5; higher = more chaotic
+       * navigation. Robots recover from mistakes via the BFS distance
+       * map — each subsequent decision still has the same chance of
+       * heading optimally back toward the finish.
+       */
+      mistakeMaxRate: 0.3,
+    },
+
     traitToStat: {
       speed: {
         base: 0.5,
@@ -170,6 +244,8 @@ export const CONFIG = {
      * See design/gdd/arena-loader.md §7.
      */
     defaultArenaPath: '/assets/data/arenas/arena-01.json',
+    /** URL for Arena-02 (`maze-race`). Loaded when the route is `#peek-maze`. */
+    mazeArenaPath: '/assets/data/arenas/arena-02.json',
   },
 
   camera: {
@@ -180,6 +256,25 @@ export const CONFIG = {
      * advances, both the camera and the lookAt translate by the same
      * dx, holding the framing constant.
      */
+    /**
+     * Maze-race overhead framing. Maze paths aren't monotonic in any
+     * world axis, so "ahead of leader" loses meaning — the camera sits
+     * directly above the leader with a slight back-tilt so the maze
+     * walls + finish beacon stay visible around the leader's silhouette.
+     */
+    mazeFollow: {
+      aheadOffsetX: 0,
+      offsetY: 55,
+      offsetZ: 22,
+      lookAtAheadX: 0,
+      lookAtY: 0.5,
+      // Slower than sprint's 4.0 because the high-overhead view
+      // amplifies any lateral target movement (small world delta →
+      // larger screen delta). 2.5 keeps the camera responsive enough
+      // to track corner turns while smoothing high-frequency wobble
+      // when the leader id rotates within the hysteresis band.
+      lerpRatePerSecond: 2.5,
+    },
     follow: {
       /** Camera offset ahead of leader along +X. Positive = camera leads. */
       aheadOffsetX: 10,

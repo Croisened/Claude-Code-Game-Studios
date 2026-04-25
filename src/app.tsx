@@ -4,12 +4,19 @@ import { createRenderer } from '@/renderer/renderer';
 import { createAnimationStateSwitcher } from '@/animation/state-switcher';
 import { createSimDriver } from '@/sim/sim-driver';
 import { createSimRendererBridge } from '@/sim/sim-renderer-bridge';
-import { createFollowLeaderCamera } from '@/camera/follow-leader-camera';
+import {
+  createFollowLeaderCamera,
+  type LeaderResolver,
+} from '@/camera/follow-leader-camera';
+import { createRobotShoulderCamera } from '@/camera/robot-shoulder-camera';
 import { createFinishLine } from '@/arena-visuals/finish-line';
-import { runSim } from '@/sim/engine';
+import { createMazeWalls, createMazeFinishTree } from '@/arena-visuals/maze-walls';
+import { runSim, type EventModule } from '@/sim/engine';
 import { createSprintRaceModule } from '@/sim/sprint-race';
+import { createMazeRaceModule } from '@/sim/maze-race';
+import { generateMazeLayout } from '@/sim/maze';
 import { loadRoster } from '@/sim/robot-roster';
-import { loadArena } from '@/sim/arena';
+import { loadArena, type Arena } from '@/sim/arena';
 import { CONFIG } from '@/config';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
@@ -34,10 +41,37 @@ const GROUND_PAD_X = 40;
  *  due to chaos jitter; this gives margin without making the floor huge. */
 const GROUND_PAD_Z = 40;
 
+/**
+ * Deep grove-floor green for the maze ground plane. Set a touch darker
+ * than the finish-tree's canopy (`0x4f7d3e`) so the foliage reads as the
+ * lighter green of the pair — fruit-bearing trees against shaded earth,
+ * the way an orange grove looks from above.
+ */
+const MAZE_GROUND_COLOR = 0x3a5527;
+
 /** Peek mode hides the dev HUD and shows a minimal training caption +
- *  back link. Triggered by the '#peek' hash from the Landing page. */
+ *  back link. Triggered by the '#peek' / '#peek-maze' hashes from Landing. */
 function isPeekMode(): boolean {
-  return typeof window !== 'undefined' && window.location.hash === '#peek';
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hash;
+  return h === '#peek' || h === '#peek-maze';
+}
+
+/**
+ * Pick which arena JSON to load based on the URL hash.
+ *
+ * - `#peek`       → sprint race (Arena-01). Explicit opt-in for the
+ *                   original linear race; landing's "Sprint Race →"
+ *                   button sends users here.
+ * - `#peek-maze`  → maze race (Arena-02).
+ * - Anything else → maze race. Dev (`npm run dev`, no hash) lands here
+ *                   so we can iterate on the maze without typing the
+ *                   route every reload.
+ */
+function arenaPathFromHash(): string {
+  if (typeof window === 'undefined') return CONFIG.arena.mazeArenaPath;
+  if (window.location.hash === '#peek') return CONFIG.arena.defaultArenaPath;
+  return CONFIG.arena.mazeArenaPath;
 }
 
 /**
@@ -57,6 +91,92 @@ function pickRandomSeed(): number {
   return (Date.now() & 0xffffffff) >>> 0;
 }
 
+interface StaticCameraPlacement {
+  readonly position: { x: number; y: number; z: number };
+  readonly lookAt: { x: number; y: number; z: number };
+}
+
+interface ArenaSetup {
+  readonly eventModule: EventModule;
+  readonly sceneObjects: readonly THREE.Object3D[];
+  readonly leaderResolver?: LeaderResolver;
+  readonly cameraSettings?: typeof CONFIG.camera.follow | typeof CONFIG.camera.mazeFollow;
+  /**
+   * If set, the camera is positioned to this fixed pose at mount and
+   * never updated. Mutually exclusive with `leaderResolver` /
+   * `cameraSettings` — a static camera doesn't need a follower.
+   */
+  readonly staticCameraPlacement?: StaticCameraPlacement;
+}
+
+interface BuildArenaSetupOptions {
+  readonly arena: Arena;
+  readonly roster: Awaited<ReturnType<typeof loadRoster>>;
+  readonly seed: number;
+  readonly renderer: ReturnType<typeof createRenderer>;
+}
+
+/**
+ * Assemble the arena-type-specific pieces: which event module to feed
+ * into `runSim`, which scene objects (finish-line / maze walls / posts)
+ * to drop into the renderer, and how the follow camera should pick its
+ * leader and frame the action.
+ *
+ * The maze layout is generated *outside* the sim from the same seed —
+ * the sim's rng is consumed inside `runSim` and isn't exposed here, so
+ * we mint a sibling rng with the same seed for maze topology. Both are
+ * deterministic per seed, so the layout the renderer/camera see matches
+ * the layout the maze-race module steers along.
+ */
+function buildArenaSetup(opts: BuildArenaSetupOptions): ArenaSetup {
+  const { arena, seed } = opts;
+  if (arena.type === 'maze-race') {
+    if (!arena.mazeConfig) {
+      throw new Error('maze-race arena loaded without mazeConfig — loader bug');
+    }
+    const layout = generateMazeLayout({ config: arena.mazeConfig, seed });
+    const wallsGroup = createMazeWalls(layout);
+    const finishTree = createMazeFinishTree(layout);
+    const eventModule = createMazeRaceModule({ layout });
+
+    // Static camera. The maze is centered at world origin (length × width
+    // square). A fixed-angle vantage that frames the entire grid keeps
+    // the maze stationary in screen-space — no camera tracking, no leader
+    // hysteresis, no jitter. Robots move *within* the frame.
+    //
+    // Camera distance scales with `arena.width` so a doubled maze stays
+    // framed. Tilt is roughly 30° off vertical (atan(0.55 / 1.05)),
+    // giving an isometric-feeling overhead with enough perspective to
+    // read wall heights vs. floor.
+    const halfMaze = Math.max(arena.length, arena.width) / 2;
+    const camY = halfMaze * 2.1;
+    const camZ = halfMaze * 1.1;
+    const staticCameraPlacement: StaticCameraPlacement = {
+      position: { x: 0, y: camY, z: camZ },
+      lookAt: { x: 0, y: 0, z: 0 },
+    };
+
+    return {
+      eventModule,
+      sceneObjects: [wallsGroup, finishTree],
+      staticCameraPlacement,
+    };
+  }
+
+  // Default: sprint-race.
+  return {
+    eventModule: createSprintRaceModule(),
+    sceneObjects: [createFinishLine(arena)],
+  };
+}
+
+/** Per-mounted-scene state used by the camera effect to attach handlers. */
+interface SceneRefs {
+  renderer: ReturnType<typeof createRenderer>;
+  camera: THREE.PerspectiveCamera;
+  built: ArenaSetup;
+}
+
 export function App() {
   const peekMode = isPeekMode();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,6 +184,13 @@ export function App() {
   // The useEffect below depends on `seed`, so changing it triggers full
   // teardown + remount.
   const [seed, setSeed] = useState<number>(() => pickRandomSeed());
+  // null = arena cam (static or follow-leader, picked by arena type).
+  // number = follow that robot id over-the-shoulder.
+  const [cameraTargetId, setCameraTargetId] = useState<number | null>(null);
+  // Bumped each time the main effect finishes building the scene. The
+  // camera effect keys off this so it knows when refs are ready.
+  const [sceneVersion, setSceneVersion] = useState(0);
+  const sceneRefs = useRef<SceneRefs | null>(null);
   const [stats, setStats] = useState<RaceStats>({
     fps: 0,
     robotCount: 0,
@@ -109,42 +236,58 @@ export function App() {
     let renderer: ReturnType<typeof createRenderer> | null = null;
     let switcher: ReturnType<typeof createAnimationStateSwitcher> | null = null;
     let bridge: ReturnType<typeof createSimRendererBridge> | null = null;
-    let follower: ReturnType<typeof createFollowLeaderCamera> | null = null;
     let cancelled = false;
     let fpsRaf = 0;
 
     (async () => {
       try {
-        // Arena loads first so the renderer can size its ground plane to the
-        // race course. Roster loads in parallel — independent fetch.
-        const [arena, roster] = await Promise.all([loadArena(), loadRoster()]);
+        // Arena loads first so the renderer can size its ground plane to
+        // the race course. Roster loads in parallel — independent fetch.
+        const arenaPath = arenaPathFromHash();
+        const [arena, roster] = await Promise.all([
+          loadArena({ arenaPath }),
+          loadRoster(),
+        ]);
         if (cancelled) return;
 
+        // Sprint races run along +X (length × width oriented). Maze
+        // arenas are square grids centered on the origin (length and
+        // width are equal). Ground extents differ per arena type.
+        const isMaze = arena.type === 'maze-race';
+        const groundExtents = isMaze
+          ? {
+              sizeX: arena.length + GROUND_PAD_X * 2,
+              sizeZ: arena.width + GROUND_PAD_Z * 2,
+              centerX: 0,
+              centerZ: 0,
+            }
+          : {
+              sizeX: arena.length + GROUND_PAD_X * 2,
+              sizeZ: arena.width + GROUND_PAD_Z * 2,
+              centerX: arena.length / 2,
+              centerZ: 0,
+            };
+
         renderer = createRenderer({
-          // Sim's first pose write overrides positions; placeholder grid is
-          // a brief flicker we'd rather skip.
           placePlaceholderGrid: false,
-          groundExtents: {
-            sizeX: arena.length + GROUND_PAD_X * 2,
-            sizeZ: arena.width + GROUND_PAD_Z * 2,
-            centerX: arena.length / 2,
-            centerZ: 0,
-          },
+          groundExtents,
+          groundColor: isMaze ? MAZE_GROUND_COLOR : undefined,
         });
         await renderer.mount(container, camera);
         if (cancelled) return;
 
-        // Drop the finish-line marker onto the floor at the arena's
-        // last gate. Disposed automatically when the renderer's scene
-        // traversal walks the mesh on dispose().
-        renderer.addToScene(createFinishLine(arena));
-
-        // Build the deterministic race result, then a driver to play it.
+        // Build the deterministic race result + visuals + leader rule
+        // for the chosen arena type.
+        const built = buildArenaSetup({ arena, roster, seed, renderer });
+        for (const obj of built.sceneObjects) {
+          renderer.addToScene(obj);
+        }
         const result = runSim({
           seed,
           roster,
           arena,
-          eventModule: createSprintRaceModule(),
+          eventModule: built.eventModule,
+          maxTicks: arena.maxTicks,
         });
         const driver = createSimDriver({ result });
 
@@ -161,8 +304,12 @@ export function App() {
         });
         bridge.start();
 
-        follower = createFollowLeaderCamera({ camera, renderer });
-        follower.start();
+        // The camera effect (separate `useEffect`) reads these refs and
+        // attaches whatever follow handler matches the current camera
+        // target. Doing it here instead of inline keeps switching modes
+        // mid-race cheap (no renderer / sim teardown).
+        sceneRefs.current = { renderer, camera, built };
+        setSceneVersion((v) => v + 1);
 
         setStats((s) => ({
           ...s,
@@ -207,15 +354,60 @@ export function App() {
     return () => {
       cancelled = true;
       if (fpsRaf) cancelAnimationFrame(fpsRaf);
-      // Disposal order: follower (only mutates camera) → bridge (writes
-      // to instance.root) → switcher (reads renderer-owned mixers) →
-      // renderer. Reverse order would touch disposed objects.
-      follower?.dispose();
+      // Disposal order: bridge (writes to instance.root) → switcher
+      // (reads renderer-owned mixers) → renderer. The camera handle is
+      // owned by the camera effect, which tears down on `sceneVersion`
+      // change before the new scene mounts — no double-dispose risk.
+      sceneRefs.current = null;
       bridge?.dispose();
       switcher?.dispose();
       renderer?.dispose();
     };
   }, [seed]);
+
+  // Camera effect — toggles between arena cam (static / leader-follow,
+  // depending on arena type) and over-the-shoulder for a specific robot.
+  // Re-runs whenever the scene is rebuilt or the user changes the target.
+  // Crucially, switching cameras mid-race does NOT touch the renderer,
+  // sim driver, or bridge: only the camera handle is recreated.
+  useEffect(() => {
+    if (sceneVersion === 0) return;
+    const refs = sceneRefs.current;
+    if (!refs) return;
+
+    let handle: { dispose: () => void } | null = null;
+
+    if (cameraTargetId !== null) {
+      const sh = createRobotShoulderCamera({
+        camera: refs.camera,
+        renderer: refs.renderer,
+        targetRobotId: cameraTargetId,
+      });
+      sh.start();
+      handle = sh;
+    } else if (refs.built.staticCameraPlacement) {
+      // Snap once and leave the camera alone.
+      const p = refs.built.staticCameraPlacement.position;
+      const l = refs.built.staticCameraPlacement.lookAt;
+      refs.camera.position.set(p.x, p.y, p.z);
+      refs.camera.lookAt(l.x, l.y, l.z);
+      // No-op handle — nothing to dispose for a static placement.
+      handle = { dispose: () => {} };
+    } else {
+      const f = createFollowLeaderCamera({
+        camera: refs.camera,
+        renderer: refs.renderer,
+        leaderResolver: refs.built.leaderResolver,
+        settings: refs.built.cameraSettings,
+      });
+      f.start();
+      handle = f;
+    }
+
+    return () => {
+      handle?.dispose();
+    };
+  }, [sceneVersion, cameraTargetId]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden' }}>
@@ -224,11 +416,117 @@ export function App() {
         <PeekOverlay
           loadStatus={stats.loadStatus}
           errorMessage={stats.errorMessage}
+          arenaId={stats.arenaId}
           onRaceAgain={handleRaceAgain}
         />
       ) : (
         <DevHud stats={stats} />
       )}
+      <CameraControl
+        targetId={cameraTargetId}
+        robotCount={stats.robotCount || CONFIG.renderer.robotCount}
+        onChange={setCameraTargetId}
+      />
+    </div>
+  );
+}
+
+interface CameraControlProps {
+  targetId: number | null;
+  robotCount: number;
+  onChange: (id: number | null) => void;
+}
+
+/**
+ * Top-right toggle: an "Arena" button to clear the override and an input
+ * accepting a robot id. Submitting (Enter or blur) parses the number and
+ * snaps the camera to follow that robot over-the-shoulder. Empty input
+ * (or out-of-range) snaps back to the arena cam.
+ */
+function CameraControl({ targetId, robotCount, onChange }: CameraControlProps) {
+  const [text, setText] = useState<string>(targetId === null ? '' : String(targetId));
+
+  // Keep the input in sync if the parent clears the target externally.
+  useEffect(() => {
+    setText(targetId === null ? '' : String(targetId));
+  }, [targetId]);
+
+  const apply = () => {
+    const trimmed = text.trim();
+    if (trimmed === '') {
+      onChange(null);
+      return;
+    }
+    const n = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(n) || n < 0 || n >= robotCount) {
+      onChange(null);
+      setText('');
+      return;
+    }
+    onChange(n);
+  };
+
+  const isArenaActive = targetId === null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        display: 'flex',
+        gap: 6,
+        alignItems: 'center',
+        padding: '6px 8px',
+        background: 'rgba(0, 0, 0, 0.6)',
+        color: '#e6e6e6',
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        fontSize: 12,
+        borderRadius: 6,
+        backdropFilter: 'blur(4px)',
+      }}
+    >
+      <span style={{ color: '#8a8a96', letterSpacing: '0.06em' }}>CAM</span>
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        style={{
+          padding: '3px 8px',
+          fontSize: 12,
+          fontFamily: 'inherit',
+          background: isArenaActive ? '#22e6ff' : 'transparent',
+          color: isArenaActive ? '#0a0a0f' : '#e6e6e6',
+          border: `1px solid ${isArenaActive ? '#22e6ff' : '#8a8a96'}`,
+          borderRadius: 4,
+          cursor: 'pointer',
+        }}
+      >
+        Arena
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={text}
+        placeholder="Robot #"
+        onInput={(e) => setText((e.currentTarget as HTMLInputElement).value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            (e.currentTarget as HTMLInputElement).blur();
+          }
+        }}
+        onBlur={apply}
+        style={{
+          width: 64,
+          padding: '3px 6px',
+          fontSize: 12,
+          fontFamily: 'inherit',
+          background: targetId !== null ? 'rgba(34, 230, 255, 0.15)' : 'rgba(255,255,255,0.05)',
+          color: '#e6e6e6',
+          border: `1px solid ${targetId !== null ? '#22e6ff' : '#8a8a96'}`,
+          borderRadius: 4,
+          outline: 'none',
+        }}
+      />
     </div>
   );
 }
@@ -282,6 +580,7 @@ function DevHud({ stats }: DevHudProps) {
 interface PeekOverlayProps {
   loadStatus: LoadStatus;
   errorMessage?: string;
+  arenaId: string;
   onRaceAgain: () => void;
 }
 
@@ -299,7 +598,9 @@ const peekButtonStyle = {
   cursor: 'pointer',
 } as const;
 
-function PeekOverlay({ loadStatus, errorMessage, onRaceAgain }: PeekOverlayProps) {
+function PeekOverlay({ loadStatus, errorMessage, arenaId, onRaceAgain }: PeekOverlayProps) {
+  const caption =
+    arenaId === 'arena-02' ? 'MAZE RACE · ARENA 02' : 'SPRINT RACE · ARENA 01';
   const goBack = (e: MouseEvent) => {
     e.preventDefault();
     window.location.hash = '';
@@ -350,7 +651,7 @@ function PeekOverlay({ loadStatus, errorMessage, onRaceAgain }: PeekOverlayProps
           pointerEvents: 'none',
         }}
       >
-        SPRINT RACE · ARENA 01
+        {caption}
       </div>
 
       {/* Loading + error states only */}

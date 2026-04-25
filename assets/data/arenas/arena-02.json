@@ -1,0 +1,15 @@
+{
+  "id": "arena-02",
+  "type": "maze-race",
+  "length": 168,
+  "width": 168,
+  "maxTicks": 10800,
+  "mazeConfig": {
+    "cellSize": 4,
+    "gridCols": 42,
+    "gridRows": 42,
+    "entranceCount": 10,
+    "finishCol": 21,
+    "finishRow": 21
+  }
+}
