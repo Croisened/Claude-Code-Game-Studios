@@ -41,7 +41,7 @@ const GRID_ROW_OFFSET = 4; // centres the grid on z=0 at robotCount=85 (10×9 la
 // lighting becomes a tunable surface in v1.1+ when arena variation lands).
 const SCENE_BACKGROUND = '#2a3548';
 const GROUND_COLOR = 0x2a3548;        // matches bg so the horizon blends
-const GROUND_SIZE = 80;
+const DEFAULT_GROUND_SIZE = 80;
 const GROUND_ROUGHNESS = 0.95;
 const AMBIENT_INTENSITY = 0.9;
 const SUN_INTENSITY = 1.4;
@@ -108,6 +108,22 @@ export type WebGLRendererFactory = (
 
 export type AssetLoaderFn = (opts: LoadRobotAssetsOpts) => Promise<RobotAssets>;
 
+/**
+ * Ground-plane geometry override. Defaults to an 80×80 square centered at
+ * origin (the Sprint 4 placeholder). Pass arena-derived values from the
+ * app shell to size the floor to the race course (S6-03 follow-up).
+ */
+export interface GroundExtents {
+  /** Length of the ground along world X. */
+  readonly sizeX: number;
+  /** Width of the ground along world Z. */
+  readonly sizeZ: number;
+  /** Ground center along world X (default: 0). */
+  readonly centerX?: number;
+  /** Ground center along world Z (default: 0). */
+  readonly centerZ?: number;
+}
+
 export interface CreateRendererOptions {
   /** Test seam: factory for the WebGLRenderer. Defaults to `new THREE.WebGLRenderer(...)`. */
   webGLRendererFactory?: WebGLRendererFactory;
@@ -121,6 +137,12 @@ export interface CreateRendererOptions {
   resizeTarget?: EventTarget | null;
   /** Whether to lay instances out on a placeholder 10×9 grid. Default true (Sprint 4). */
   placePlaceholderGrid?: boolean;
+  /**
+   * Ground-plane geometry. Default: an 80×80 square centered at origin.
+   * App shell sizes this to the loaded arena so the floor reaches the
+   * finish line.
+   */
+  groundExtents?: GroundExtents;
 }
 
 // -----------------------------------------------------------------------------
@@ -154,6 +176,12 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
           ? (globalThis.window as unknown as EventTarget)
           : null);
   const placePlaceholderGrid = opts.placePlaceholderGrid ?? true;
+  const groundExtents: Required<GroundExtents> = {
+    sizeX: opts.groundExtents?.sizeX ?? DEFAULT_GROUND_SIZE,
+    sizeZ: opts.groundExtents?.sizeZ ?? DEFAULT_GROUND_SIZE,
+    centerX: opts.groundExtents?.centerX ?? 0,
+    centerZ: opts.groundExtents?.centerZ ?? 0,
+  };
 
   // Closure-private state.
   let mounted = false;
@@ -197,13 +225,14 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
     s.add(rim);
 
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
+      new THREE.PlaneGeometry(groundExtents.sizeX, groundExtents.sizeZ),
       new THREE.MeshStandardMaterial({
         color: GROUND_COLOR,
         roughness: GROUND_ROUGHNESS,
       }),
     );
     ground.rotation.x = -Math.PI / 2;
+    ground.position.set(groundExtents.centerX, 0, groundExtents.centerZ);
     s.add(ground);
 
     return s;

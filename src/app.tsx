@@ -21,9 +21,17 @@ interface RaceStats {
   arenaId: string;
   totalTicks: number;
   currentTick: number;
+  isDone: boolean;
   winnerId: number | null;
   errorMessage?: string;
 }
+
+/** Padding around the arena's race-direction (X) extent for the ground plane.
+ *  The leader runs to arena.length; we want some floor past the finish line. */
+const GROUND_PAD_X = 40;
+/** Padding around the arena's lateral (Z) extent. Robots fan slightly off-axis
+ *  due to chaos jitter; this gives margin without making the floor huge. */
+const GROUND_PAD_Z = 40;
 
 /** Peek mode hides the dev HUD and shows a minimal training caption +
  *  back link. Triggered by the '#peek' hash from the Landing page. */
@@ -42,6 +50,7 @@ export function App() {
     arenaId: '',
     totalTicks: 0,
     currentTick: 0,
+    isDone: false,
     winnerId: null,
   });
 
@@ -49,28 +58,41 @@ export function App() {
     const container = containerRef.current;
     if (!container) return;
 
-    // Renderer skips the placeholder grid layout because the sim's first
-    // pose write (frame 1 of the bridge loop) overrides positions anyway.
-    // Robots remain stacked at origin for the brief moment between mount
-    // and the first bridge tick — invisible to the eye.
-    const renderer = createRenderer({ placePlaceholderGrid: false });
-    // Camera built up-front so it can be passed into mount(). The follower
-    // mutates this camera each frame — it never replaces it.
+    // Camera built up-front so it can be passed into renderer.mount(). The
+    // follower mutates this camera each frame — it never replaces it.
     const camera = new THREE.PerspectiveCamera(
       50,
       container.clientWidth / Math.max(container.clientHeight, 1),
       0.1,
       500,
     );
+
+    let renderer: ReturnType<typeof createRenderer> | null = null;
     let switcher: ReturnType<typeof createAnimationStateSwitcher> | null = null;
     let bridge: ReturnType<typeof createSimRendererBridge> | null = null;
     let follower: ReturnType<typeof createFollowLeaderCamera> | null = null;
     let cancelled = false;
     let fpsRaf = 0;
-    let tickRaf = 0;
 
-    Promise.all([renderer.mount(container, camera), loadRoster(), loadArena()])
-      .then(([, roster, arena]) => {
+    (async () => {
+      try {
+        // Arena loads first so the renderer can size its ground plane to the
+        // race course. Roster loads in parallel — independent fetch.
+        const [arena, roster] = await Promise.all([loadArena(), loadRoster()]);
+        if (cancelled) return;
+
+        renderer = createRenderer({
+          // Sim's first pose write overrides positions; placeholder grid is
+          // a brief flicker we'd rather skip.
+          placePlaceholderGrid: false,
+          groundExtents: {
+            sizeX: arena.length + GROUND_PAD_X * 2,
+            sizeZ: arena.width + GROUND_PAD_Z * 2,
+            centerX: arena.length / 2,
+            centerZ: 0,
+          },
+        });
+        await renderer.mount(container, camera);
         if (cancelled) return;
 
         // Build the deterministic race result, then a driver to play it.
@@ -100,7 +122,7 @@ export function App() {
 
         setStats((s) => ({
           ...s,
-          robotCount: renderer.getAllInstances().length,
+          robotCount: renderer!.getAllInstances().length,
           loadStatus: 'ready',
           seed: CONFIG.sim.defaultSeed,
           arenaId: arena.id,
@@ -109,43 +131,45 @@ export function App() {
 
         // Lightweight per-frame stats sampler — piggy-backs on rAF without
         // touching the renderer or bridge internals. FPS is averaged over
-        // ~1 s windows; current tick polls the driver each frame.
+        // ~1 s windows; current tick polls the driver each frame. Once the
+        // driver reports done, we pin the displayed tick to totalTicks so
+        // the HUD reads "ticks/ticks (100%)" rather than "ticks-1/ticks".
         let frameCount = 0;
         let lastSampleAt = performance.now();
         const sampleStats = () => {
           if (cancelled) return;
           frameCount++;
           const now = performance.now();
+          const done = driver.isDone();
+          const tick = done ? driver.getTotalTicks() : driver.getCurrentTick();
           if (now - lastSampleAt >= 1000) {
             const fps = (frameCount * 1000) / (now - lastSampleAt);
-            setStats((s) => ({ ...s, fps, currentTick: driver.getCurrentTick() }));
+            setStats((s) => ({ ...s, fps, currentTick: tick, isDone: done }));
             frameCount = 0;
             lastSampleAt = now;
           } else {
-            setStats((s) => ({ ...s, currentTick: driver.getCurrentTick() }));
+            setStats((s) => ({ ...s, currentTick: tick, isDone: done }));
           }
           fpsRaf = requestAnimationFrame(sampleStats);
         };
         fpsRaf = requestAnimationFrame(sampleStats);
-        tickRaf = fpsRaf;
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
         setStats((s) => ({ ...s, loadStatus: 'error', errorMessage: msg }));
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
       if (fpsRaf) cancelAnimationFrame(fpsRaf);
-      if (tickRaf && tickRaf !== fpsRaf) cancelAnimationFrame(tickRaf);
       // Disposal order: follower (only mutates camera) → bridge (writes
       // to instance.root) → switcher (reads renderer-owned mixers) →
       // renderer. Reverse order would touch disposed objects.
       follower?.dispose();
       bridge?.dispose();
       switcher?.dispose();
-      renderer.dispose();
+      renderer?.dispose();
     };
   }, []);
 

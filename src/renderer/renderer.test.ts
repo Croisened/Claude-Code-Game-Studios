@@ -286,6 +286,67 @@ describe('createRenderer — lifecycle', () => {
   });
 });
 
+describe('createRenderer — ground extents', () => {
+  function findGround(scene: THREE.Scene): THREE.Mesh | null {
+    let found: THREE.Mesh | null = null;
+    scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && (mesh.geometry as THREE.PlaneGeometry).type === 'PlaneGeometry') {
+        found = mesh;
+      }
+    });
+    return found;
+  }
+
+  it('defaults to an 80×80 ground at origin when no extents are passed', async () => {
+    const h = makeHarness();
+    const r = makeRenderer(h);
+    await r.mount(h.container);
+    const ground = findGround(r.getScene());
+    expect(ground).not.toBeNull();
+    const params = (ground!.geometry as THREE.PlaneGeometry).parameters;
+    expect(params.width).toBe(80);
+    expect(params.height).toBe(80);
+    expect(ground!.position.x).toBe(0);
+    expect(ground!.position.z).toBe(0);
+  });
+
+  it('honors groundExtents.sizeX / sizeZ / centerX / centerZ', async () => {
+    const h = makeHarness();
+    const r = createRenderer({
+      webGLRendererFactory: () => h.webGL,
+      loadAssets: h.loadAssets,
+      raf: h.raf.raf,
+      cancelRaf: h.raf.cancelRaf,
+      resizeTarget: h.resizeTarget,
+      groundExtents: { sizeX: 320, sizeZ: 80, centerX: 120, centerZ: 5 },
+    });
+    await r.mount(h.container);
+    const ground = findGround(r.getScene());
+    const params = (ground!.geometry as THREE.PlaneGeometry).parameters;
+    expect(params.width).toBe(320);
+    expect(params.height).toBe(80);
+    expect(ground!.position.x).toBe(120);
+    expect(ground!.position.z).toBe(5);
+  });
+
+  it('falls back to defaults for omitted center values', async () => {
+    const h = makeHarness();
+    const r = createRenderer({
+      webGLRendererFactory: () => h.webGL,
+      loadAssets: h.loadAssets,
+      raf: h.raf.raf,
+      cancelRaf: h.raf.cancelRaf,
+      resizeTarget: h.resizeTarget,
+      groundExtents: { sizeX: 200, sizeZ: 50 },
+    });
+    await r.mount(h.container);
+    const ground = findGround(r.getScene());
+    expect(ground!.position.x).toBe(0);
+    expect(ground!.position.z).toBe(0);
+  });
+});
+
 describe('createRenderer — robotCount validation', () => {
   it('throws when CONFIG.renderer.robotCount is below the safe range', async () => {
     // CONFIG is read-only; fake the loader to detect that mount checks before loading.
