@@ -41,7 +41,7 @@ is unused in v1).
 | 6 | Trait → Stat Derivation | Core | MVP | Approved | design/gdd/trait-to-stat-derivation.md | Config Module |
 | 7 | Robot Roster Loader | Core | MVP | Approved | design/gdd/robot-roster-loader.md | Config Module |
 | 8 | Arena Loader + Sprint Arena JSON | Core | MVP | Approved | design/gdd/arena-loader.md | Config Module |
-| 9 | Sim Engine Core | Gameplay | MVP | Not Started | — | Config Module, Seedable PRNG, Trait → Stat Derivation, Robot Roster Loader |
+| 9 | Sim Engine Core | Gameplay | MVP | Approved | design/gdd/sim-engine-core.md | Config Module, Seedable PRNG, Trait → Stat Derivation, Robot Roster Loader |
 | 10 | Sprint Race Event Module | Gameplay | MVP | Not Started | — | Sim Engine Core, Arena Loader |
 | 11 | Camera System | Presentation | MVP | Not Started | — | 85-Instance Skinned Mesh Renderer, Sim Engine Core |
 | 12 | Winner VFX | Presentation | MVP | Not Started | — | Sim Engine Core, 85-Instance Skinned Mesh Renderer |
