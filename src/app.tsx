@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { createRenderer } from './renderer/renderer';
-import { createAnimationStateSwitcher } from './animation/state-switcher';
-import type { RobotAnimationState } from './animation/state-switcher';
-import { CONFIG } from './config';
+import { createRenderer } from '@/renderer/renderer';
+import { createAnimationStateSwitcher } from '@/animation/state-switcher';
+import type { RobotAnimationState } from '@/animation/types';
+import { CONFIG } from '@/config';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 

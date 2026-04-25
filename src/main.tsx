@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { App } from './app';
-import { Landing } from './landing';
+import { App } from '@/app';
+import { Landing } from '@/landing';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('#app mount point not found in index.html');

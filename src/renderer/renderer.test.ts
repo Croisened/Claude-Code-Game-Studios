@@ -334,10 +334,10 @@ describe('createRenderer — instances', () => {
     r.dispose();
   });
 
-  it('getInstance(id) returns undefined before mount() resolves', () => {
+  it('getInstance(id) throws before mount() resolves', () => {
     const h = makeHarness();
     const r = makeRenderer(h);
-    expect(r.getInstance(0)).toBeUndefined();
+    expect(() => r.getInstance(0)).toThrow(/not mounted/i);
   });
 
   it('every instance has a unique skin texture (Set size === robotCount)', async () => {

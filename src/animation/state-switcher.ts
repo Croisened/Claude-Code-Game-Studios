@@ -15,7 +15,8 @@
  */
 import * as THREE from 'three';
 import { CONFIG } from '@/config';
-import type { Renderer, RobotInstance, RobotAnimationState } from '@/renderer/renderer';
+import type { RobotAnimationState } from '@/animation/types';
+import type { Renderer, RobotInstance } from '@/renderer/renderer';
 
 const INITIAL_STATE: RobotAnimationState = 'idle';
 const PHASE_OFFSET_COEFF = 0.07; // seconds × id
@@ -30,8 +31,6 @@ interface ActionState {
   state: RobotAnimationState;
   action: THREE.AnimationAction;
 }
-
-export type { RobotAnimationState };
 
 export interface AnimationStateSwitcher {
   /** Drive a robot's animation to the given state with a crossfade.

@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CONFIG } from '@/config';
+import type { RobotAnimationState } from '@/animation/types';
 import {
   loadRobotAssets,
   type RobotAssets,
@@ -66,8 +67,6 @@ const ROBOT_COUNT_MAX = 85;
 // Public types
 // -----------------------------------------------------------------------------
 
-export type RobotAnimationState = 'run' | 'idle' | 'death';
-
 export interface RobotInstance {
   /** Robot id, 0..robotCount-1; matches NFT token id when robotCount === 85. */
   readonly id: number;
@@ -81,6 +80,8 @@ export interface RobotInstance {
 
 export interface Renderer {
   mount(container: HTMLElement, camera?: THREE.PerspectiveCamera): Promise<void>;
+  /** Throws if called before `mount()` resolves. Returns `undefined` only when
+   *  the renderer is mounted but the id is unknown. */
   getInstance(id: number): RobotInstance | undefined;
   getAllInstances(): readonly RobotInstance[];
   getScene(): THREE.Scene;
@@ -398,7 +399,7 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
   }
 
   function getInstance(id: number): RobotInstance | undefined {
-    if (!mounted) return undefined;
+    if (!mounted) throw new Error('Renderer not mounted; getInstance() unavailable');
     return instanceById.get(id);
   }
 
