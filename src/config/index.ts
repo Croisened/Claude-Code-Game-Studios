@@ -18,6 +18,42 @@ export const CONFIG = {
 
     /** Default RNG seed for ad-hoc dev runs. Production sims pass an explicit seed. */
     defaultSeed: 1,
+
+    /**
+     * Trait → Stat coefficients consumed by `deriveStats` (`src/sim/trait-to-stat.ts`).
+     * See design/gdd/trait-to-stat-derivation.md §4 (formulas) and §7 (knob ranges).
+     * v1 starting values lifted from design/gdd/game-concept.md §Trait-to-Behavior
+     * Mapping; tuning happens during Sprint 6+ when behavior is observable.
+     */
+    traitToStat: {
+      speed: {
+        base: 0.5,
+        fullSendCoeff: 0.8,
+      },
+      acceleration: {
+        base: 0.4,
+        fullSendCoeff: 1.0,
+        doubterCoeff: 0.3,
+      },
+      handling: {
+        base: 0.5,
+        cipherCoeff: 0.5,
+        fullSendCoeff: 0.2,
+      },
+      pathfinding: {
+        base: 0.3,
+        cipherCoeff: 0.7,
+      },
+      caution: {
+        doubterCoeff: 1.0,
+      },
+      chaos: {
+        degenCoeff: 1.0,
+      },
+      grace: {
+        altruistCoeff: 1.0,
+      },
+    },
   },
 
   renderer: {

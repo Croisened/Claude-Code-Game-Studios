@@ -124,6 +124,12 @@ All transitions driven by scheduled jobs (Supabase `pg_cron` or Edge Functions o
 
 ## Trait-to-Behavior Mapping
 
+> **Note:** The implementation contract for trait → stat derivation lives in
+> [trait-to-stat-derivation.md](./trait-to-stat-derivation.md) (S5-01, Approved).
+> The formulas in this section are the *concept-level* mapping; the GDD is the
+> source of truth for v1 coefficients, edge cases, and the seventh stat
+> (`grace`, derived from altruist) added during S5-01.
+
 Traits feed into sim-time parameters per robot. Because traits sum to ≤ 100, every robot is specialized in *something* — spec the mapping so no stat is wasted.
 
 | Trait | Primary effect | Secondary effect | Best event type |

@@ -172,6 +172,16 @@ export const CONFIG = {
     tickRateHz: 60,
     /** Default RNG seed for ad-hoc dev runs. Production sims pass an explicit seed. */
     defaultSeed: 1,
+    /** Trait → Stat derivation coefficients. See trait-to-stat-derivation.md §4. */
+    traitToStat: {
+      speed:        { base: 0.5, fullSendCoeff: 0.8 },
+      acceleration: { base: 0.4, fullSendCoeff: 1.0, doubterCoeff: 0.3 },
+      handling:     { base: 0.5, cipherCoeff: 0.5, fullSendCoeff: 0.2 },
+      pathfinding:  { base: 0.3, cipherCoeff: 0.7 },
+      caution:      { doubterCoeff: 1.0 },
+      chaos:        { degenCoeff: 1.0 },
+      grace:        { altruistCoeff: 1.0 },
+    },
   },
 
   renderer: {
@@ -304,7 +314,7 @@ system in the project, directly or transitively. v1 systems that read
 | Build / Deploy Pipeline | `CONFIG.build.traitsJsonPath` | S4-03 |
 | 85-Instance Skinned Mesh Renderer | `CONFIG.renderer.*` | S4-04 |
 | Animation State Switcher | `CONFIG.animation.*` | S4-05 |
-| Trait → Stat Derivation | `CONFIG.sim.*` (Sprint 5 coefficients) | Sprint 5 |
+| [Trait → Stat Derivation](./trait-to-stat-derivation.md) | `CONFIG.sim.traitToStat.*` | S5-01 |
 | Robot Roster Loader | `CONFIG.build.traitsJsonPath`, `CONFIG.renderer.skinTexturePathPattern` | Sprint 5 |
 | Arena Loader | `CONFIG.arena.*` | Sprint 5 |
 | Sim Engine Core | `CONFIG.sim.*` | Sprint 5 |
