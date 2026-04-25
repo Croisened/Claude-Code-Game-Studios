@@ -133,7 +133,26 @@ export const CONFIG = {
   },
 
   camera: {
-    // Subsystem reserved — populated in Sprint 6 with Camera System.
+    /**
+     * Follow-Leader mode parameters (S6-03 spike). The camera tracks the
+     * highest-X active robot, keeping a fixed offset and lookAt height
+     * derived from the Sprint 4 placeholder camera — same view, just
+     * sliding along the arena.
+     */
+    follow: {
+      /** Camera height above ground plane. */
+      offsetY: 14,
+      /** Camera offset along world +Z (the spectator side of the arena). */
+      offsetZ: 28,
+      /** lookAt height above ground plane. */
+      lookAtY: 1,
+      /**
+       * Position-tracking smoothing rate, in 1/seconds. Higher = snappier,
+       * lower = floatier. The leader's X position is dt-independent
+       * exponentially smoothed: alpha = 1 - exp(-rate * dt).
+       */
+      lerpRatePerSecond: 4.0,
+    },
   },
 
   build: {

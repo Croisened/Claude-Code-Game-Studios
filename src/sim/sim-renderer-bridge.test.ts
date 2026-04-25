@@ -220,6 +220,70 @@ describe('createSimRendererBridge — pose writes', () => {
     bridge.dispose();
   });
 
+  it('applies the GLB-vs-sim forward-axis offset (+π/2) to rotation.y', () => {
+    // The sim's pose.yaw = 0 means "facing +X"; the GLB is authored facing
+    // +Z. The bridge must absorb the +π/2 offset or robots run sideways
+    // (zero offset) or backwards (-π/2 offset).
+    const f0 = makeFrame(0, [{ active: 1, x: 0, y: 0, z: 0, yaw: 0 }]);
+    const f1 = makeFrame(1, [{ active: 1, x: 1, y: 0, z: 0, yaw: 0 }]);
+    const result: SimResult = {
+      ticks: 2,
+      events: [],
+      poseFrames: [f0, f1],
+      finishOrder: [],
+      winnerId: null,
+    };
+    const renderer = makeFakeRenderer(1);
+    const switcher = makeFakeSwitcher(1);
+    const driver = makeDriver(result);
+    const clock = makeScriptedClock();
+
+    const bridge = createSimRendererBridge({
+      renderer,
+      switcher,
+      driver,
+      raf: clock.raf,
+      cancelRaf: clock.cancelRaf,
+      now: clock.now,
+    });
+    bridge.start();
+    clock.step(0);
+    clock.step(TICK_DT * 1000);
+
+    // pose.yaw = 0 + offset (+π/2) → rotation.y ≈ 1.5708.
+    expect(renderer.getAllInstances()[0].root.rotation.y).toBeCloseTo(Math.PI / 2, 6);
+
+    // A sim yaw of -π/2 should land at exactly 0 in world rotation.
+    const f2 = makeFrame(0, [{ active: 1, x: 0, y: 0, z: 0, yaw: -Math.PI / 2 }]);
+    const f3 = makeFrame(1, [{ active: 1, x: 0, y: 0, z: 0, yaw: -Math.PI / 2 }]);
+    const result2: SimResult = {
+      ticks: 2,
+      events: [],
+      poseFrames: [f2, f3],
+      finishOrder: [],
+      winnerId: null,
+    };
+    const renderer2 = makeFakeRenderer(1);
+    const switcher2 = makeFakeSwitcher(1);
+    const driver2 = makeDriver(result2);
+    const clock2 = makeScriptedClock();
+    const bridge2 = createSimRendererBridge({
+      renderer: renderer2,
+      switcher: switcher2,
+      driver: driver2,
+      raf: clock2.raf,
+      cancelRaf: clock2.cancelRaf,
+      now: clock2.now,
+    });
+    bridge2.start();
+    clock2.step(0);
+    clock2.step(TICK_DT * 1000);
+    expect(renderer2.getAllInstances()[0].root.rotation.y).toBeCloseTo(0, 6);
+
+    bridge.dispose();
+    bridge2.dispose();
+  });
+
   it('clamps large dt jumps to MAX_DT_SECONDS (tab-throttle protection)', () => {
     // Step a 5-second jump in one frame. Driver should advance only by
     // 0.1 s (MAX_DT). With a 6-tick result at 1/60 s, the driver needs

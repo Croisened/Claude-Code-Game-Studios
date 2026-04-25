@@ -42,6 +42,26 @@ import type { TimelineEvent } from '@/sim/engine';
 /** Matches the renderer's MAX_DT — clamps tab-throttle skip-ahead. */
 const MAX_DT_SECONDS = 0.1;
 
+/**
+ * Asset-vs-sim coordinate convention reconciliation.
+ *
+ * The robot GLBs are authored facing world +Z (Blender's default forward
+ * for character exports). The Sim Engine Core GDD §3 R3 defines `yaw = 0`
+ * as "facing +X" (`buildStartPoses` puts every robot at yaw=0 and the
+ * sprint race module advances motion along +X). Without this offset,
+ * robots run sideways with their faces toward the camera.
+ *
+ * Three.js `rotation.y` is counter-clockwise viewed from +Y. Rotating an
+ * object whose front-face is +Z by `+π/2` lands its front on +X. (A
+ * `-π/2` offset would rotate it to -X — i.e., running backwards along
+ * the motion vector.)
+ *
+ * This is the only correct location for the offset. The sim is
+ * coordinate-system-agnostic by design; the asset convention is fixed by
+ * the GLB; the bridge is the boundary where both meet.
+ */
+const ASSET_FORWARD_YAW_OFFSET = Math.PI / 2;
+
 export interface SimRendererBridgeOptions {
   readonly renderer: Renderer;
   readonly switcher: AnimationStateSwitcher;
@@ -169,7 +189,7 @@ export function createSimRendererBridge(opts: SimRendererBridgeOptions): SimRend
       const pose = driver.getPose(inst.id);
       if (!pose) continue;
       inst.root.position.set(pose.x, pose.y, pose.z);
-      inst.root.rotation.y = pose.yaw;
+      inst.root.rotation.y = pose.yaw + ASSET_FORWARD_YAW_OFFSET;
     }
   }
 

@@ -50,8 +50,11 @@ describe('CONFIG', () => {
     expect(CONFIG.arena.defaultArenaPath).toBe('/assets/data/arenas/arena-01.json');
   });
 
-  it('reserves camera as an empty subsystem placeholder', () => {
-    expect(Object.keys(CONFIG.camera)).toHaveLength(0);
+  it('exposes follow-leader camera tunables (S6-03 spike)', () => {
+    expect(CONFIG.camera.follow.offsetY).toBeGreaterThan(0);
+    expect(CONFIG.camera.follow.offsetZ).toBeGreaterThan(0);
+    expect(CONFIG.camera.follow.lerpRatePerSecond).toBeGreaterThan(0);
+    expect(Number.isFinite(CONFIG.camera.follow.lookAtY)).toBe(true);
   });
 
   it('exposes a Config type alias', () => {

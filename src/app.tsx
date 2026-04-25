@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import * as THREE from 'three';
 import { createRenderer } from '@/renderer/renderer';
 import { createAnimationStateSwitcher } from '@/animation/state-switcher';
 import { createSimDriver } from '@/sim/sim-driver';
 import { createSimRendererBridge } from '@/sim/sim-renderer-bridge';
+import { createFollowLeaderCamera } from '@/camera/follow-leader-camera';
 import { runSim } from '@/sim/engine';
 import { createSprintRaceModule } from '@/sim/sprint-race';
 import { loadRoster } from '@/sim/robot-roster';
@@ -52,13 +54,22 @@ export function App() {
     // Robots remain stacked at origin for the brief moment between mount
     // and the first bridge tick — invisible to the eye.
     const renderer = createRenderer({ placePlaceholderGrid: false });
+    // Camera built up-front so it can be passed into mount(). The follower
+    // mutates this camera each frame — it never replaces it.
+    const camera = new THREE.PerspectiveCamera(
+      50,
+      container.clientWidth / Math.max(container.clientHeight, 1),
+      0.1,
+      500,
+    );
     let switcher: ReturnType<typeof createAnimationStateSwitcher> | null = null;
     let bridge: ReturnType<typeof createSimRendererBridge> | null = null;
+    let follower: ReturnType<typeof createFollowLeaderCamera> | null = null;
     let cancelled = false;
     let fpsRaf = 0;
     let tickRaf = 0;
 
-    Promise.all([renderer.mount(container), loadRoster(), loadArena()])
+    Promise.all([renderer.mount(container, camera), loadRoster(), loadArena()])
       .then(([, roster, arena]) => {
         if (cancelled) return;
 
@@ -83,6 +94,9 @@ export function App() {
           },
         });
         bridge.start();
+
+        follower = createFollowLeaderCamera({ camera, renderer });
+        follower.start();
 
         setStats((s) => ({
           ...s,
@@ -125,9 +139,10 @@ export function App() {
       cancelled = true;
       if (fpsRaf) cancelAnimationFrame(fpsRaf);
       if (tickRaf && tickRaf !== fpsRaf) cancelAnimationFrame(tickRaf);
-      // Bridge first (writes to instance.root), then switcher (reads
-      // renderer-owned mixers), then renderer. Reverse order would touch
-      // disposed objects.
+      // Disposal order: follower (only mutates camera) → bridge (writes
+      // to instance.root) → switcher (reads renderer-owned mixers) →
+      // renderer. Reverse order would touch disposed objects.
+      follower?.dispose();
       bridge?.dispose();
       switcher?.dispose();
       renderer.dispose();
