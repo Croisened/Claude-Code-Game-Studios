@@ -39,14 +39,35 @@ function isPeekMode(): boolean {
   return typeof window !== 'undefined' && window.location.hash === '#peek';
 }
 
+/**
+ * Generate a fresh uint32 seed for a new race. Uses Web Crypto rather
+ * than `Math.random` (forbidden in `src/`); the sim itself is fully
+ * deterministic given the seed. Falls back to a `Date.now()`-derived
+ * value in environments lacking `crypto.getRandomValues` (vanishingly
+ * rare in modern browsers; the fallback exists only so SSR / unit tests
+ * don't crash).
+ */
+function pickRandomSeed(): number {
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const arr = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(arr);
+    return arr[0];
+  }
+  return (Date.now() & 0xffffffff) >>> 0;
+}
+
 export function App() {
   const peekMode = isPeekMode();
   const containerRef = useRef<HTMLDivElement>(null);
+  // A fresh seed is picked on first mount and on every Race Again click.
+  // The useEffect below depends on `seed`, so changing it triggers full
+  // teardown + remount.
+  const [seed, setSeed] = useState<number>(() => pickRandomSeed());
   const [stats, setStats] = useState<RaceStats>({
     fps: 0,
     robotCount: 0,
     loadStatus: 'loading',
-    seed: CONFIG.sim.defaultSeed,
+    seed,
     arenaId: '',
     totalTicks: 0,
     currentTick: 0,
@@ -54,7 +75,24 @@ export function App() {
     winnerId: null,
   });
 
+  const handleRaceAgain = () => {
+    setSeed(pickRandomSeed());
+  };
+
   useEffect(() => {
+    // Reset transient race fields on (re)mount so the HUD doesn't briefly
+    // show last race's winner / final tick while assets reload.
+    setStats((s) => ({
+      ...s,
+      loadStatus: 'loading',
+      seed,
+      winnerId: null,
+      isDone: false,
+      currentTick: 0,
+      totalTicks: 0,
+      errorMessage: undefined,
+    }));
+
     const container = containerRef.current;
     if (!container) return;
 
@@ -97,7 +135,7 @@ export function App() {
 
         // Build the deterministic race result, then a driver to play it.
         const result = runSim({
-          seed: CONFIG.sim.defaultSeed,
+          seed,
           roster,
           arena,
           eventModule: createSprintRaceModule(),
@@ -124,7 +162,7 @@ export function App() {
           ...s,
           robotCount: renderer!.getAllInstances().length,
           loadStatus: 'ready',
-          seed: CONFIG.sim.defaultSeed,
+          seed,
           arenaId: arena.id,
           totalTicks: result.ticks,
         }));
@@ -171,13 +209,17 @@ export function App() {
       switcher?.dispose();
       renderer?.dispose();
     };
-  }, []);
+  }, [seed]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
       {peekMode ? (
-        <PeekOverlay loadStatus={stats.loadStatus} errorMessage={stats.errorMessage} />
+        <PeekOverlay
+          loadStatus={stats.loadStatus}
+          errorMessage={stats.errorMessage}
+          onRaceAgain={handleRaceAgain}
+        />
       ) : (
         <DevHud stats={stats} />
       )}
@@ -234,36 +276,60 @@ function DevHud({ stats }: DevHudProps) {
 interface PeekOverlayProps {
   loadStatus: LoadStatus;
   errorMessage?: string;
+  onRaceAgain: () => void;
 }
 
-function PeekOverlay({ loadStatus, errorMessage }: PeekOverlayProps) {
+const peekButtonStyle = {
+  color: 'rgba(230, 230, 230, 0.85)',
+  textDecoration: 'none',
+  fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
+  fontSize: 14,
+  letterSpacing: '0.04em',
+  padding: '6px 10px',
+  background: 'rgba(0, 0, 0, 0.35)',
+  borderRadius: 6,
+  backdropFilter: 'blur(4px)',
+  border: 'none',
+  cursor: 'pointer',
+} as const;
+
+function PeekOverlay({ loadStatus, errorMessage, onRaceAgain }: PeekOverlayProps) {
   const goBack = (e: MouseEvent) => {
     e.preventDefault();
     window.location.hash = '';
   };
+  const raceAgain = (e: MouseEvent) => {
+    e.preventDefault();
+    onRaceAgain();
+  };
   return (
     <>
-      {/* Back link — top-left, low-key */}
-      <a
-        href="#"
-        onClick={goBack}
+      {/* Top-left controls — Back + Race Again, low-key */}
+      <div
         style={{
           position: 'absolute',
           top: 16,
           left: 18,
-          color: 'rgba(230, 230, 230, 0.85)',
-          textDecoration: 'none',
-          fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
-          fontSize: 14,
-          letterSpacing: '0.04em',
-          padding: '6px 10px',
-          background: 'rgba(0, 0, 0, 0.35)',
-          borderRadius: 6,
-          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          gap: 8,
         }}
       >
-        ← Back
-      </a>
+        <a href="#" onClick={goBack} style={peekButtonStyle}>
+          ← Back
+        </a>
+        <button
+          type="button"
+          onClick={raceAgain}
+          disabled={loadStatus === 'loading'}
+          style={{
+            ...peekButtonStyle,
+            opacity: loadStatus === 'loading' ? 0.5 : 1,
+            cursor: loadStatus === 'loading' ? 'wait' : 'pointer',
+          }}
+        >
+          ↻ Race Again
+        </button>
+      </div>
 
       {/* Training caption — bottom-left, mono, low opacity */}
       <div
