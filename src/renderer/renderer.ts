@@ -12,6 +12,7 @@
  */
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CONFIG } from '@/config';
 import {
   loadRobotAssets,
@@ -35,11 +36,28 @@ const GRID_COLS = 10;
 const GRID_SPACING = 3.5;
 const GRID_ROW_OFFSET = 4; // centres the grid on z=0 at robotCount=85 (10×9 layout)
 
-// --- Scene presentation defaults
-const SCENE_BACKGROUND = '#0a0a0f';
-const AMBIENT_INTENSITY = 0.55;
+// --- Scene presentation defaults (transitional dev lighting; per GDD §7,
+// lighting becomes a tunable surface in v1.1+ when arena variation lands).
+const SCENE_BACKGROUND = '#2a3548';
+const GROUND_COLOR = 0x2a3548;        // matches bg so the horizon blends
+const GROUND_SIZE = 80;
+const GROUND_ROUGHNESS = 0.95;
+const AMBIENT_INTENSITY = 0.9;
 const SUN_INTENSITY = 1.4;
 const SUN_POSITION: readonly [number, number, number] = [20, 40, 20];
+const HEMI_SKY_COLOR = 0xb1c8ff;       // cool blue sky tint
+const HEMI_GROUND_COLOR = 0x4a3a2a;    // warm earth tint
+const HEMI_INTENSITY = 0.5;
+const RIM_COLOR = 0x9bb6ff;            // cool blue back-light
+const RIM_INTENSITY = 0.6;
+const RIM_POSITION: readonly [number, number, number] = [-30, 25, -40];
+
+// --- Tone mapping (ACES Filmic gives PBR materials proper film-grade response)
+const TONE_MAPPING_EXPOSURE = 1.2;
+
+// --- Per-instance material overrides (test scene metallic finish)
+const ROBOT_METALNESS = 0.7;
+const ROBOT_ROUGHNESS = 0.45;
 
 const ROBOT_COUNT_MIN = 10;
 const ROBOT_COUNT_MAX = 85;
@@ -74,6 +92,8 @@ export interface WebGLRendererLike {
   domElement: HTMLCanvasElement;
   outputColorSpace: THREE.ColorSpace;
   shadowMap: { enabled: boolean };
+  toneMapping: THREE.ToneMapping;
+  toneMappingExposure: number;
   setSize(w: number, h: number): void;
   setPixelRatio(n: number): void;
   getPixelRatio(): number;
@@ -143,11 +163,15 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
   let scene: THREE.Scene | null = null;
   let camera: THREE.PerspectiveCamera | null = null;
   let internalCamera: THREE.PerspectiveCamera | null = null;
+  let envTexture: THREE.Texture | null = null;
   let instances: RobotInstance[] = [];
   let instanceById: Map<number, RobotInstance> = new Map();
   const clock = new THREE.Clock(false);
   let rafId: number | null = null;
   let resizeListener: (() => void) | null = null;
+  // Production path uses a real WebGLRenderer; tests inject a stub. Skip
+  // PBR-environment setup when stubbed (PMREMGenerator needs real WebGL).
+  const isProductionRenderer = opts.webGLRendererFactory === undefined;
 
   function buildScene(): THREE.Scene {
     const s = new THREE.Scene();
@@ -156,9 +180,30 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
     const ambient = new THREE.AmbientLight(0xffffff, AMBIENT_INTENSITY);
     s.add(ambient);
 
+    const hemi = new THREE.HemisphereLight(
+      HEMI_SKY_COLOR,
+      HEMI_GROUND_COLOR,
+      HEMI_INTENSITY,
+    );
+    s.add(hemi);
+
     const sun = new THREE.DirectionalLight(0xffffff, SUN_INTENSITY);
     sun.position.set(...SUN_POSITION);
     s.add(sun);
+
+    const rim = new THREE.DirectionalLight(RIM_COLOR, RIM_INTENSITY);
+    rim.position.set(...RIM_POSITION);
+    s.add(rim);
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
+      new THREE.MeshStandardMaterial({
+        color: GROUND_COLOR,
+        roughness: GROUND_ROUGHNESS,
+      }),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    s.add(ground);
 
     return s;
   }
@@ -221,6 +266,8 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
       const cloneMesh = findSkinnedMesh(root);
       const mat = sourceMaterial.clone();
       mat.map = assets.textures[id];
+      mat.metalness = ROBOT_METALNESS;
+      mat.roughness = ROBOT_ROUGHNESS;
       mat.needsUpdate = true;
       cloneMesh.material = mat;
 
@@ -306,6 +353,8 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
     webGLRenderer = webGLRendererFactory({ antialias: true });
     webGLRenderer.outputColorSpace = THREE.SRGBColorSpace;
     webGLRenderer.shadowMap.enabled = false;
+    webGLRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    webGLRenderer.toneMappingExposure = TONE_MAPPING_EXPOSURE;
 
     const dpr =
       typeof globalThis !== 'undefined' && 'devicePixelRatio' in globalThis
@@ -316,6 +365,18 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
     container.appendChild(webGLRenderer.domElement);
 
     scene = buildScene();
+
+    // Environment map for metallic robots — without this, metalness > 0
+    // looks matte black because there is nothing to reflect. Production
+    // path only; the test stub does not implement enough of WebGLRenderer
+    // for PMREMGenerator to function.
+    if (isProductionRenderer) {
+      const realRenderer = webGLRenderer as unknown as THREE.WebGLRenderer;
+      const pmrem = new THREE.PMREMGenerator(realRenderer);
+      envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environment = envTexture;
+      pmrem.dispose();
+    }
 
     if (suppliedCamera) {
       camera = suppliedCamera;
@@ -380,6 +441,11 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
           disposeMaterial(mat);
         }
       });
+    }
+
+    if (envTexture) {
+      envTexture.dispose();
+      envTexture = null;
     }
 
     if (webGLRenderer) {

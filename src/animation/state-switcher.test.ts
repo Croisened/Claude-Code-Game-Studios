@@ -24,6 +24,8 @@ function makeWebGLRendererStub() {
     domElement: { parentNode: null } as unknown as HTMLCanvasElement,
     outputColorSpace: '' as unknown as THREE.ColorSpace,
     shadowMap: { enabled: false },
+    toneMapping: THREE.NoToneMapping as THREE.ToneMapping,
+    toneMappingExposure: 1,
     setSize: () => {},
     setPixelRatio: () => {},
     getPixelRatio: () => 1,

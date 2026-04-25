@@ -36,6 +36,8 @@ function makeWebGLRendererStub(): WebGLRendererLike & {
     domElement: canvas,
     outputColorSpace: '' as unknown as THREE.ColorSpace,
     shadowMap: { enabled: false },
+    toneMapping: THREE.NoToneMapping as THREE.ToneMapping,
+    toneMappingExposure: 1,
     __renderCalls: 0,
     __setSizeCalls: [] as Array<[number, number]>,
     __pixelRatio: 1,
