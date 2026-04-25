@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { createRenderer } from './renderer/renderer';
+import { createAnimationStateSwitcher } from './animation/state-switcher';
 import { CONFIG } from './config';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
@@ -24,6 +25,7 @@ export function App() {
     if (!container) return;
 
     const renderer = createRenderer();
+    let switcher: ReturnType<typeof createAnimationStateSwitcher> | null = null;
     let cancelled = false;
     let fpsRaf = 0;
 
@@ -31,6 +33,9 @@ export function App() {
       .mount(container)
       .then(() => {
         if (cancelled) return;
+        switcher = createAnimationStateSwitcher(renderer);
+        // No setState calls — robots remain in the default 'idle' state.
+        // Sim Engine (Sprint 5+) will drive transitions to 'run' / 'death'.
         setStats((s) => ({
           ...s,
           robotCount: renderer.getAllInstances().length,
@@ -64,6 +69,9 @@ export function App() {
     return () => {
       cancelled = true;
       if (fpsRaf) cancelAnimationFrame(fpsRaf);
+      // Switcher must dispose before the renderer (it reads renderer-owned
+      // mixers; reverse order would touch disposed mixers).
+      switcher?.dispose();
       renderer.dispose();
     };
   }, []);
@@ -86,7 +94,7 @@ export function App() {
           pointerEvents: 'none',
         }}
       >
-        <div>S4-04 — 85-Instance Renderer</div>
+        <div>S4-05 — Renderer + State Switcher (idle)</div>
         <div>Robots: {stats.robotCount} / {CONFIG.renderer.robotCount}</div>
         <div>FPS: {stats.fps.toFixed(1)}</div>
         <div>Status: {stats.loadStatus}</div>

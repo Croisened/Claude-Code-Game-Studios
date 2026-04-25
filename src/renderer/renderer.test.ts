@@ -409,15 +409,19 @@ describe('createRenderer — instances', () => {
 });
 
 describe('createRenderer — render loop', () => {
-  it('one rAF tick advances every mixer (mixer.time > 0)', async () => {
+  it('mixers are functional and clips contain run/idle/death after mount', async () => {
+    // The renderer no longer auto-plays any action — the Animation State
+    // Switcher (S4-05) owns play()/crossFadeTo() calls. So this test
+    // verifies the mixer + clips surface is correct, not that mixer.time
+    // advances. (A mixer-time-after-play test lives in the switcher suite.)
     const h = makeHarness();
     const r = makeRenderer(h);
     await r.mount(h.container);
-    // Sleep to give the clock a non-zero delta on the next tick.
-    await new Promise((res) => setTimeout(res, 16));
-    h.raf.flushOne();
     for (const inst of r.getAllInstances()) {
-      expect(inst.mixer.time).toBeGreaterThan(0);
+      expect(inst.mixer).toBeInstanceOf(THREE.AnimationMixer);
+      expect(inst.clips.has('run')).toBe(true);
+      expect(inst.clips.has('idle')).toBe(true);
+      expect(inst.clips.has('death')).toBe(true);
     }
     r.dispose();
   });

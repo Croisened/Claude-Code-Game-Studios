@@ -22,7 +22,6 @@ import {
 // --- Tunable invariants (not in CONFIG; see GDD §7 "Implementation-detail constants")
 const MAX_DT = 0.1;            // seconds; clamps tab-throttle skip-ahead
 const PIXEL_RATIO_CAP = 2;     // clamp DPR to keep retina/3x phones bounded
-const PHASE_OFFSET_COEFF = 0.07; // per-id seconds offset so the field doesn't run in lockstep
 
 // --- Internal camera defaults (transitional; Sprint 6 supplies its own camera)
 const INTERNAL_CAMERA_FOV = 50;
@@ -232,9 +231,9 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
         ['death', deathClip],
       ]);
 
-      const runAction = mixer.clipAction(runClip);
-      runAction.time = (id * PHASE_OFFSET_COEFF) % runClip.duration;
-      runAction.play();
+      // No auto-play. The Animation State Switcher (S4-05) owns play()
+      // and crossFadeTo() calls codebase-wide; the renderer hands out
+      // mixer + clips and stays out of the timing business.
 
       if (placePlaceholderGrid) placeOnGrid(root, id);
 

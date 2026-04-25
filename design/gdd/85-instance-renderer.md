@@ -197,9 +197,13 @@ to the rendered scene without the renderer importing from their modules.
 - Per-instance `AnimationMixer`. Each instance owns its mixer and its
   clip-to-action map. Sim-driven state changes operate on this mixer
   exclusively — no global mixer pool.
-- Initial state: every instance starts playing `run` with a slight
-  per-instance time offset (`(id * 0.07) % clip.duration`) so the field
-  does not run in lockstep. Visual sanity, no game logic.
+- **No auto-play.** The renderer constructs `mixer.clipAction()` references
+  for run / idle / death but does **not** call `.play()` on any of them.
+  The Animation State Switcher (S4-05) is the sole owner of `play()` and
+  `crossFadeTo()` calls codebase-wide. Robots remain in their bind pose
+  until the switcher is constructed and starts the initial `idle` action.
+  The per-instance phase-offset desync (`id * 0.07` seconds) lives in the
+  switcher's constructor, not here.
 
 **Render loop rules.**
 
@@ -333,9 +337,9 @@ for (let id = 0; id < 85; id++) {
     ['death', deathGltf.animations[0]],
   ]);
 
-  const runAction = mixer.clipAction(clips.get('run')!);
-  runAction.time = (id * 0.07) % clips.get('run')!.duration;
-  runAction.play();
+  // No play() call here — the Animation State Switcher (S4-05) owns all
+  // play() and crossFadeTo() invocations. The renderer hands the caller
+  // mixer + clips; the switcher does the rest.
 
   scene.add(root);
   instances.push({ id, root, mixer, clips });
@@ -344,9 +348,9 @@ for (let id = 0; id < 85; id++) {
 
 The exact code in `src/renderer/renderer.ts` will tighten the casts and
 error handling, but the shape is fixed. The spike's `renderer-spike.ts`
-implements ~95% of this pattern already; productionizing means adding
-the `idle`/`death` clip extraction, the `getInstance(id)` lookup table,
-and the `dispose()` contract.
+implements an earlier (auto-play-on-mount) variant of this pattern;
+productionizing in S4-04 + S4-05 added clip extraction, instance lookup,
+disposal, and the no-auto-play contract.
 
 **Camera ownership.** The Camera System (S4-11, Sprint 6) owns the
 `PerspectiveCamera` instance, its position, lookAt, FOV, and any mode
@@ -531,11 +535,13 @@ arena variation lands.
    same map. Verified by traversing all instances and asserting
    `Set(maps).size === robotCount`.
 
-5. **Animation playing.** After `mount()` resolves and one render frame
-   has ticked, every `RobotInstance.mixer.time > 0`. Verified by
-   `getAllInstances().every(i => i.mixer.time > 0)` on a one-frame sample.
-   Uses only the public `AnimationMixer.time` property — no Three.js
-   internals.
+5. **Mixers are functional and clip references are populated.** After
+   `mount()` resolves, every `RobotInstance.mixer` is a `THREE.AnimationMixer`
+   instance, and `RobotInstance.clips` contains exactly the three keys
+   `'run'`, `'idle'`, `'death'`. The renderer no longer auto-plays any
+   action (the Animation State Switcher owns that responsibility per
+   S4-05); a corollary mixer-time test belongs in the switcher's test
+   suite, not here.
 
 6. **Sustained 60 FPS.** Spike-measured 60.0 FPS. The implementation
    acceptance criterion: **measured FPS ≥ 55 over a continuous 10-second
