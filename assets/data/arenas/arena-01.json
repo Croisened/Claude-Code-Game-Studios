@@ -1,0 +1,17 @@
+{
+  "id": "arena-01",
+  "type": "sprint-race",
+  "length": 240,
+  "width": 40,
+  "startGrid": {
+    "lanes": 17,
+    "rows": 5,
+    "laneSpacing": 2.0,
+    "rowSpacing": 2.0
+  },
+  "gates": [
+    { "name": "gate_a", "x": 80,  "cullToCount": 28 },
+    { "name": "gate_b", "x": 160, "cullToCount": 10 },
+    { "name": "finish", "x": 240, "cullToCount": 1 }
+  ]
+}

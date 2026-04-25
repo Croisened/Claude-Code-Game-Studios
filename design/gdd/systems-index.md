@@ -40,7 +40,7 @@ is unused in v1).
 | 5 | Animation State Switcher | Rendering | MVP | Approved | design/gdd/animation-state-switcher.md | 85-Instance Skinned Mesh Renderer, Sim Engine Core |
 | 6 | Trait → Stat Derivation | Core | MVP | Approved | design/gdd/trait-to-stat-derivation.md | Config Module |
 | 7 | Robot Roster Loader | Core | MVP | Approved | design/gdd/robot-roster-loader.md | Config Module |
-| 8 | Arena Loader + Sprint Arena JSON | Core | MVP | Not Started | — | Config Module |
+| 8 | Arena Loader + Sprint Arena JSON | Core | MVP | Approved | design/gdd/arena-loader.md | Config Module |
 | 9 | Sim Engine Core | Gameplay | MVP | Not Started | — | Config Module, Seedable PRNG, Trait → Stat Derivation, Robot Roster Loader |
 | 10 | Sprint Race Event Module | Gameplay | MVP | Not Started | — | Sim Engine Core, Arena Loader |
 | 11 | Camera System | Presentation | MVP | Not Started | — | 85-Instance Skinned Mesh Renderer, Sim Engine Core |
@@ -193,10 +193,10 @@ is doing.
 |--------|-------|
 | Total systems identified (v1) | 13 |
 | Deferred systems (v1.1+) | 14 |
-| Design docs started | 7 |
-| Design docs reviewed | 7 |
-| Design docs approved | 7 |
-| MVP systems designed | 7 / 13 |
+| Design docs started | 8 |
+| Design docs reviewed | 8 |
+| Design docs approved | 8 |
+| MVP systems designed | 8 / 13 |
 
 ---
 

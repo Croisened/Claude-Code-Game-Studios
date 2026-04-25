@@ -159,6 +159,8 @@ Tune the coefficients during testing. The goal: a max Full Send robot clearly wi
 Ship with three. Rotate pseudo-randomly per day (e.g., deterministic from seed so future rotation can be inspected).
 
 ### 1. Sprint Race
+- See [arena-loader.md](./arena-loader.md) (S5-03) for the v1 sprint course
+  schema and `arena-01.json` — the canonical implementation contract.
 - Straight-ish course with three checkpoint gates.
 - Stage 1 cull: first 30 through Gate A; gate closes. (Robots behind are eliminated.)
 - Stage 2 cull: first 10 through Gate B; gate closes.

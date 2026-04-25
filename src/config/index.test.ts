@@ -46,8 +46,11 @@ describe('CONFIG', () => {
     expect(CONFIG.build.traitsJsonPath).toBe('/traits.json');
   });
 
-  it('reserves arena and camera as empty subsystem placeholders', () => {
-    expect(Object.keys(CONFIG.arena)).toHaveLength(0);
+  it('matches the v1 starter values for arena (S5-03)', () => {
+    expect(CONFIG.arena.defaultArenaPath).toBe('/assets/data/arenas/arena-01.json');
+  });
+
+  it('reserves camera as an empty subsystem placeholder', () => {
     expect(Object.keys(CONFIG.camera)).toHaveLength(0);
   });
 

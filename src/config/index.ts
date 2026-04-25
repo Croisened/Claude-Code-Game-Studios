@@ -97,7 +97,12 @@ export const CONFIG = {
   },
 
   arena: {
-    // Subsystem reserved — populated in Sprint 5 with Arena Loader.
+    /**
+     * Default URL for the Arena Loader's `arenaSource` (S5-03). Switch
+     * this to point at a different `arena-NN.json` for arena rotation.
+     * See design/gdd/arena-loader.md §7.
+     */
+    defaultArenaPath: '/assets/data/arenas/arena-01.json',
   },
 
   camera: {

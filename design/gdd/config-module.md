@@ -213,7 +213,8 @@ export const CONFIG = {
   },
 
   arena: {
-    // Subsystem reserved — populated in Sprint 5 with Arena Loader.
+    /** Default URL for the Arena Loader's arenaSource. See arena-loader.md §7. */
+    defaultArenaPath: '/assets/data/arenas/arena-01.json',
   },
 
   camera: {
@@ -316,7 +317,7 @@ system in the project, directly or transitively. v1 systems that read
 | Animation State Switcher | `CONFIG.animation.*` | S4-05 |
 | [Trait → Stat Derivation](./trait-to-stat-derivation.md) | `CONFIG.sim.traitToStat.*` | S5-01 |
 | [Robot Roster Loader](./robot-roster-loader.md) | `CONFIG.build.traitsJsonPath`, `CONFIG.renderer.skinTexturePathPattern` | S5-02 |
-| Arena Loader | `CONFIG.arena.*` | Sprint 5 |
+| [Arena Loader](./arena-loader.md) | `CONFIG.arena.defaultArenaPath` | S5-03 |
 | Sim Engine Core | `CONFIG.sim.*` | Sprint 5 |
 | Sprint Race Event Module | `CONFIG.sim.*`, `CONFIG.arena.*` | Sprint 6 |
 | Camera System | `CONFIG.camera.*` | Sprint 6 |
