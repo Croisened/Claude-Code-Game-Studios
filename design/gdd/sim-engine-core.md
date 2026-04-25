@@ -326,8 +326,9 @@ finish, `winnerId === null`.
 |---|---|---|
 | **Sprint Race Event Module** | S5-05 | Implements `EventModule`. Owns gate logic, three-stage cull, AI per-tick decisions, lane changes. Drives `runSim` for the `'sprint-race'` arena type. |
 | **Headless Sim Harness** | S5-06 | `tools/sim/run-event.ts` — calls `runSim`, serializes `SimResult` to JSON. The artifact Sprint 6 consumes. |
-| **85-Instance Renderer** | Sprint 6+ | Consumes `PoseFrame[]` to drive per-tick robot transforms in Three.js. The `Float32Array` layout is chosen so frames can be uploaded to GPU buffers without copying. |
-| **Animation State Switcher** | Sprint 6+ | Reads `pose.active` flag transitions to trigger `run` ↔ `idle` ↔ `death` clip crossfades. |
+| **[Sim Driver](sim-driver.md)** | S6-01 | Wraps a completed `SimResult` with a real-time playback clock; the in-process bridge to renderer / camera / UI. The first real-time consumer of `PoseFrame[]` and `TimelineEvent[]`. |
+| **85-Instance Renderer** | Sprint 6+ | Consumes `PoseFrame[]` indirectly via the Sim Driver's `getPose(robotId)` — the renderer reads interpolated poses per render frame and writes `RobotInstance.root.position` / `rotation`. The `Float32Array` layout in `PoseFrame.data` is preserved so a future GPU-buffer upload path remains zero-copy. |
+| **Animation State Switcher** | Sprint 6+ | Subscribes to `TimelineEvent`s via the Sim Driver's `onEvent`, not by polling `pose.active`. `elimination` events trigger the `death` crossfade; `finish` / `simEnd` trigger `idle`. |
 
 ---
 

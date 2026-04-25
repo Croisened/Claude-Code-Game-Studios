@@ -43,13 +43,18 @@ is unused in v1).
 | 8 | Arena Loader + Sprint Arena JSON | Core | MVP | Approved | design/gdd/arena-loader.md | Config Module |
 | 9 | Sim Engine Core | Gameplay | MVP | Approved | design/gdd/sim-engine-core.md | Config Module, Seedable PRNG, Trait → Stat Derivation, Robot Roster Loader |
 | 10 | Sprint Race Event Module | Gameplay | MVP | Approved | design/gdd/sprint-race-event-module.md | Sim Engine Core, Arena Loader |
-| 11 | Camera System | Presentation | MVP | Not Started | — | 85-Instance Skinned Mesh Renderer, Sim Engine Core |
-| 12 | Winner VFX | Presentation | MVP | Not Started | — | Sim Engine Core, 85-Instance Skinned Mesh Renderer |
-| 13 | Preact App Shell | UI | MVP | Not Started | — | Sim Engine Core, Camera System, 85-Instance Skinned Mesh Renderer, Winner VFX |
+| 11 | Sim Driver | Gameplay | MVP | Approved | design/gdd/sim-driver.md | Sim Engine Core, Config Module |
+| 12 | Camera System | Presentation | MVP | Not Started | — | 85-Instance Skinned Mesh Renderer, Sim Driver |
+| 13 | Winner VFX | Presentation | MVP | Not Started | — | Sim Driver, 85-Instance Skinned Mesh Renderer |
+| 14 | Preact App Shell | UI | MVP | Not Started | — | Sim Driver, Camera System, 85-Instance Skinned Mesh Renderer, Winner VFX |
 
-> Systems 4, 5, 8, 11, 12, 13 were explicit in the spec. Systems 1, 2, 3, 6, 7, 9, 10
+> Systems 4, 5, 8, 12, 13, 14 were explicit in the spec. Systems 1, 2, 3, 6, 7, 9, 10
 > are implicit — required for the explicit systems to function, enumerated during
-> dependency analysis in Phase 2 of `/map-systems` on 2026-04-24.
+> dependency analysis in Phase 2 of `/map-systems` on 2026-04-24. System 11 (Sim
+> Driver) was added during Sprint 6 (2026-04-25) per the Sprint 5 retro AI #3
+> decision to bridge `SimResult` → renderer in-process; it fills a layer the
+> original /map-systems pass treated as an implicit responsibility of the
+> Animation State Switcher.
 
 ---
 
@@ -58,7 +63,7 @@ is unused in v1).
 | Category | Description | Systems in v1 |
 |----------|-------------|---------------|
 | **Core** | Foundation systems everything depends on | Config, PRNG, Build/Deploy, Trait→Stat, Roster Loader, Arena Loader |
-| **Gameplay** | The systems that drive the sim | Sim Engine Core, Sprint Race Event Module |
+| **Gameplay** | The systems that drive the sim and bridge it to consumers | Sim Engine Core, Sprint Race Event Module, Sim Driver |
 | **Rendering** | Visual presentation of sim state | 85-Instance Renderer, Animation State Switcher |
 | **Presentation** | Viewer-facing feedback and control | Camera System, Winner VFX |
 | **UI** | Shell and interactive controls | Preact App Shell |
@@ -102,6 +107,7 @@ or "not yet."
 
 1. **Sim Engine Core** — depends on: Config, PRNG, Trait→Stat, Roster Loader. Fixed-timestep tick loop, active-robot array, elimination bookkeeping, position/rotation updates. Three.js-agnostic.
 2. **Sprint Race Event Module** — depends on: Sim Engine Core, Arena Loader. AI decisions per tick, gate logic, stage culls (85→28→10→1 or similar — final numbers tuned during design).
+3. **Sim Driver** — depends on: Sim Engine Core, Config Module. In-process playback bridge. Wraps a completed `SimResult` with a real-time clock; per-frame interpolated `getPose(robotId)` plus subscription-based `onEvent(handler)` event stream. Three.js-agnostic. Owns pause/resume/restart semantics for the playback control bar.
 
 ### Rendering Layer (depends on core + feature)
 
@@ -110,12 +116,12 @@ or "not yet."
 
 ### Presentation Layer (depends on features + rendering)
 
-1. **Camera System** — depends on: 85-Instance Renderer, Sim Engine Core. Three modes user-selectable via toggle: **Follow Leader** (auto-cuts to current first-place), **Fixed Cameras** (several authored presets per arena), **Follow ID** (viewer enters any robot ID and camera tracks that robot through the entire event including death/ragdoll).
-2. **Winner VFX** — depends on: Sim Engine Core (winner signal), 85-Instance Renderer (target). Particle burst + spotlight + slow camera orbit on the winning robot at finish. No custom victory animation in v1 per locked decision — winner plays `idle`.
+1. **Camera System** — depends on: 85-Instance Renderer, Sim Driver. Three modes user-selectable via toggle: **Follow Leader** (auto-cuts to current first-place), **Fixed Cameras** (several authored presets per arena), **Follow ID** (viewer enters any robot ID and camera tracks that robot through the entire event including death/ragdoll). Reads `getPose` per frame from the Sim Driver and subscribes to `elimination` / `finish` events for target switches.
+2. **Winner VFX** — depends on: Sim Driver (winner via `simEnd` event + `finishOrder`), 85-Instance Renderer (target). Particle burst + spotlight + slow camera orbit on the winning robot at finish. No custom victory animation in v1 per locked decision — winner plays `idle`.
 
 ### UI Layer (depends on everything)
 
-1. **Preact App Shell** — depends on: Sim Engine Core, Camera System, 85-Instance Renderer, Winner VFX. Single-page v1: Three.js canvas + "Start Sim" button + camera mode toggle + robot ID input for Follow ID + winner readout. No routing in v1 (single page). Preact is chosen for v1 to front-load the framework decision; the richer 4-route structure (leaderboard, profile, archive) arrives in v1.1–v1.2.
+1. **Preact App Shell** — depends on: Sim Driver, Camera System, 85-Instance Renderer, Winner VFX. Single-page v1: Three.js canvas + "Start Sim" button + camera mode toggle + robot ID input for Follow ID + winner readout. Pause/resume/restart bar binds directly to the Sim Driver. No routing in v1 (single page). Preact is chosen for v1 to front-load the framework decision; the richer 4-route structure (leaderboard, profile, archive) arrives in v1.1–v1.2.
 
 ---
 
@@ -191,12 +197,12 @@ is doing.
 
 | Metric | Count |
 |--------|-------|
-| Total systems identified (v1) | 13 |
+| Total systems identified (v1) | 14 |
 | Deferred systems (v1.1+) | 14 |
-| Design docs started | 8 |
-| Design docs reviewed | 8 |
-| Design docs approved | 8 |
-| MVP systems designed | 8 / 13 |
+| Design docs started | 11 |
+| Design docs reviewed | 11 |
+| Design docs approved | 11 |
+| MVP systems designed | 11 / 14 |
 
 ---
 

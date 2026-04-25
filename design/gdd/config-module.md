@@ -320,6 +320,7 @@ system in the project, directly or transitively. v1 systems that read
 | [Arena Loader](./arena-loader.md) | `CONFIG.arena.defaultArenaPath` | S5-03 |
 | Sim Engine Core | `CONFIG.sim.*` | Sprint 5 |
 | Sprint Race Event Module | `CONFIG.sim.*`, `CONFIG.arena.*` | Sprint 6 |
+| [Sim Driver](./sim-driver.md) | `CONFIG.sim.tickRateHz` (for default `tickDtSeconds`) | S6-01 |
 | Camera System | `CONFIG.camera.*` | Sprint 6 |
 | Winner VFX | `CONFIG.renderer.*` | Sprint 6 |
 | Preact App Shell | `CONFIG.renderer.targetFps`, etc. | Sprint 6 |
