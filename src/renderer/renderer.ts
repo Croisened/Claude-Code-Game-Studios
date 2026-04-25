@@ -28,8 +28,8 @@ const PIXEL_RATIO_CAP = 2;     // clamp DPR to keep retina/3x phones bounded
 const INTERNAL_CAMERA_FOV = 50;
 const INTERNAL_CAMERA_NEAR = 0.1;
 const INTERNAL_CAMERA_FAR = 500;
-const INTERNAL_CAMERA_POSITION: readonly [number, number, number] = [0, 25, 50];
-const INTERNAL_CAMERA_LOOK_AT: readonly [number, number, number] = [0, 0, 0];
+const INTERNAL_CAMERA_POSITION: readonly [number, number, number] = [0, 14, 28];
+const INTERNAL_CAMERA_LOOK_AT: readonly [number, number, number] = [0, 1, 0];
 
 // --- Placeholder grid layout (matches the spike at commit 2fe3668)
 const GRID_COLS = 10;

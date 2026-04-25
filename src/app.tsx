@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { createRenderer } from './renderer/renderer';
 import { createAnimationStateSwitcher } from './animation/state-switcher';
+import type { RobotAnimationState } from './animation/state-switcher';
 import { CONFIG } from './config';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
@@ -9,8 +10,12 @@ interface RendererStats {
   fps: number;
   robotCount: number;
   loadStatus: LoadStatus;
+  cycleState: RobotAnimationState;
   errorMessage?: string;
 }
+
+const CYCLE_ORDER: RobotAnimationState[] = ['idle', 'run', 'death'];
+const CYCLE_INTERVAL_MS = 3000;
 
 export function App() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -18,6 +23,7 @@ export function App() {
     fps: 0,
     robotCount: 0,
     loadStatus: 'loading',
+    cycleState: 'idle',
   });
 
   useEffect(() => {
@@ -28,19 +34,35 @@ export function App() {
     let switcher: ReturnType<typeof createAnimationStateSwitcher> | null = null;
     let cancelled = false;
     let fpsRaf = 0;
+    let cycleTimer: ReturnType<typeof setInterval> | null = null;
 
     renderer
       .mount(container)
       .then(() => {
         if (cancelled) return;
         switcher = createAnimationStateSwitcher(renderer);
-        // No setState calls — robots remain in the default 'idle' state.
-        // Sim Engine (Sprint 5+) will drive transitions to 'run' / 'death'.
+        // Robots are already 'idle' (switcher default = CYCLE_ORDER[0]).
+        // Don't re-set on tick 0 — that would be 85 no-op calls.
         setStats((s) => ({
           ...s,
           robotCount: renderer.getAllInstances().length,
           loadStatus: 'ready',
+          cycleState: CYCLE_ORDER[0],
         }));
+
+        // Demo cycle: every 3 seconds, advance to the next state. Lives in
+        // the App Shell, not the renderer or switcher — Sprint 5+ replaces
+        // this with sim-driven state changes.
+        let cycleIdx = 0;
+        cycleTimer = setInterval(() => {
+          if (cancelled || !switcher) return;
+          cycleIdx = (cycleIdx + 1) % CYCLE_ORDER.length;
+          const nextState = CYCLE_ORDER[cycleIdx];
+          for (let id = 0; id < CONFIG.renderer.robotCount; id++) {
+            switcher.setState(id, nextState);
+          }
+          setStats((s) => ({ ...s, cycleState: nextState }));
+        }, CYCLE_INTERVAL_MS);
 
         // Standalone FPS counter that piggy-backs on rAF without touching
         // the renderer's internals.
@@ -68,6 +90,7 @@ export function App() {
 
     return () => {
       cancelled = true;
+      if (cycleTimer) clearInterval(cycleTimer);
       if (fpsRaf) cancelAnimationFrame(fpsRaf);
       // Switcher must dispose before the renderer (it reads renderer-owned
       // mixers; reverse order would touch disposed mixers).
@@ -94,10 +117,11 @@ export function App() {
           pointerEvents: 'none',
         }}
       >
-        <div>S4-05 — Renderer + State Switcher (idle)</div>
+        <div>S4-05 — Renderer + State Switcher</div>
         <div>Robots: {stats.robotCount} / {CONFIG.renderer.robotCount}</div>
         <div>FPS: {stats.fps.toFixed(1)}</div>
         <div>Status: {stats.loadStatus}</div>
+        <div>Cycle: {stats.cycleState}</div>
         {stats.errorMessage && (
           <div style={{ color: '#ff5577' }}>Error: {stats.errorMessage}</div>
         )}
