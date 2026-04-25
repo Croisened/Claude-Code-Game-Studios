@@ -137,15 +137,17 @@ export function createSimDriver(opts: SimDriverOptions): SimDriver {
       // dt=0 call, nextEventIdx has moved past tick-0 events and further
       // dt=0 calls become true no-ops.
       if (!paused) {
-        const tick = Math.min(Math.floor(timeSec / tickDt), totalTicks - 1);
-        dispatchEventsThroughTick(tick);
+        dispatchEventsThroughTick(Math.floor(timeSec / tickDt));
       }
       return;
     }
 
     timeSec += dtSeconds;
-    const tick = Math.min(Math.floor(timeSec / tickDt), totalTicks - 1);
-    dispatchEventsThroughTick(tick);
+    // Event dispatch uses the *unclamped* tick: the engine emits `simEnd`
+    // at `tick === result.ticks` (one past the last pose frame), and that
+    // event must still fire when playback time crosses the end. The
+    // clamping in `getCurrentTick()` is a UI convenience only.
+    dispatchEventsThroughTick(Math.floor(timeSec / tickDt));
   }
 
   function getPose(robotId: number): InterpolatedPose | undefined {

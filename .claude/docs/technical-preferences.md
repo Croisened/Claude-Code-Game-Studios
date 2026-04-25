@@ -65,8 +65,11 @@
   is the sole owner of `play()` and `crossFadeTo()` calls codebase-wide. Renderer
   builds mixers + clipAction refs only.
 - **Direct mutation of `RobotInstance.root.position`/`rotation` from non-sim code** —
-  the sim is the only legitimate writer of per-tick instance pose. Camera and VFX
-  systems read positions but do not write them.
+  the [Sim ↔ Renderer Bridge](../../design/gdd/sim-driver.md) (`src/sim/sim-renderer-bridge.ts`)
+  is the sole writer of per-tick instance pose. It reads from a `SimDriver`
+  (which replays a deterministic `SimResult` from the engine) and writes to
+  `RobotInstance.root.position` / `rotation.y`. Camera and VFX systems read
+  positions but do not write them.
 - **Mounting the renderer twice on the same instance** — call sites must dispose
   and create a fresh `createRenderer()` for re-mount.
 

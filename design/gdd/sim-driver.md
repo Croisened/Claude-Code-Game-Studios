@@ -94,6 +94,11 @@ motion stays smooth regardless of when the render frame actually fires.
   `tick = N` fires the moment playback time reaches `N * tickDt` — i.e.,
   the same instant the corresponding `PoseFrame` becomes the source frame
   of interpolation.
+- **R6a.** Event dispatch uses the **unclamped** tick `floor(timeSec / tickDt)`,
+  not the clamped `getCurrentTick()`. The engine emits `simEnd` at
+  `tick = result.ticks` (one past the last `PoseFrame`); that event must
+  still fire when playback time crosses the end. The `getCurrentTick()`
+  clamp is for UI display only.
 - **R7.** `getCurrentTick()` returns `min(floor(timeSec / tickDt), totalTicks - 1)`.
   Past the final tick, it clamps; it never returns a value `>= totalTicks`.
 - **R8.** `isDone()` returns `true` once `timeSec >= totalTicks * tickDt`.

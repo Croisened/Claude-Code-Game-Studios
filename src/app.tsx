@@ -1,21 +1,27 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { createRenderer } from '@/renderer/renderer';
 import { createAnimationStateSwitcher } from '@/animation/state-switcher';
-import type { RobotAnimationState } from '@/animation/types';
+import { createSimDriver } from '@/sim/sim-driver';
+import { createSimRendererBridge } from '@/sim/sim-renderer-bridge';
+import { runSim } from '@/sim/engine';
+import { createSprintRaceModule } from '@/sim/sprint-race';
+import { loadRoster } from '@/sim/robot-roster';
+import { loadArena } from '@/sim/arena';
 import { CONFIG } from '@/config';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
-interface RendererStats {
+interface RaceStats {
   fps: number;
   robotCount: number;
   loadStatus: LoadStatus;
-  cycleState: RobotAnimationState;
+  seed: number;
+  arenaId: string;
+  totalTicks: number;
+  currentTick: number;
+  winnerId: number | null;
   errorMessage?: string;
 }
-
-const CYCLE_ORDER: RobotAnimationState[] = ['idle', 'run', 'death'];
-const CYCLE_INTERVAL_MS = 3000;
 
 /** Peek mode hides the dev HUD and shows a minimal training caption +
  *  back link. Triggered by the '#peek' hash from the Landing page. */
@@ -26,68 +32,88 @@ function isPeekMode(): boolean {
 export function App() {
   const peekMode = isPeekMode();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [stats, setStats] = useState<RendererStats>({
+  const [stats, setStats] = useState<RaceStats>({
     fps: 0,
     robotCount: 0,
     loadStatus: 'loading',
-    cycleState: 'idle',
+    seed: CONFIG.sim.defaultSeed,
+    arenaId: '',
+    totalTicks: 0,
+    currentTick: 0,
+    winnerId: null,
   });
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const renderer = createRenderer();
+    // Renderer skips the placeholder grid layout because the sim's first
+    // pose write (frame 1 of the bridge loop) overrides positions anyway.
+    // Robots remain stacked at origin for the brief moment between mount
+    // and the first bridge tick — invisible to the eye.
+    const renderer = createRenderer({ placePlaceholderGrid: false });
     let switcher: ReturnType<typeof createAnimationStateSwitcher> | null = null;
+    let bridge: ReturnType<typeof createSimRendererBridge> | null = null;
     let cancelled = false;
     let fpsRaf = 0;
-    let cycleTimer: ReturnType<typeof setInterval> | null = null;
+    let tickRaf = 0;
 
-    renderer
-      .mount(container)
-      .then(() => {
+    Promise.all([renderer.mount(container), loadRoster(), loadArena()])
+      .then(([, roster, arena]) => {
         if (cancelled) return;
+
+        // Build the deterministic race result, then a driver to play it.
+        const result = runSim({
+          seed: CONFIG.sim.defaultSeed,
+          roster,
+          arena,
+          eventModule: createSprintRaceModule(),
+        });
+        const driver = createSimDriver({ result });
+
         switcher = createAnimationStateSwitcher(renderer);
-        // Robots are already 'idle' (switcher default = CYCLE_ORDER[0]).
-        // Don't re-set on tick 0 — that would be 85 no-op calls.
+        bridge = createSimRendererBridge({
+          renderer,
+          switcher,
+          driver,
+          onEvent: (event) => {
+            if (event.type === 'simEnd') {
+              setStats((s) => ({ ...s, winnerId: event.winnerId }));
+            }
+          },
+        });
+        bridge.start();
+
         setStats((s) => ({
           ...s,
           robotCount: renderer.getAllInstances().length,
           loadStatus: 'ready',
-          cycleState: CYCLE_ORDER[0],
+          seed: CONFIG.sim.defaultSeed,
+          arenaId: arena.id,
+          totalTicks: result.ticks,
         }));
 
-        // Demo cycle: every 3 seconds, advance to the next state. Lives in
-        // the App Shell, not the renderer or switcher — Sprint 5+ replaces
-        // this with sim-driven state changes.
-        let cycleIdx = 0;
-        cycleTimer = setInterval(() => {
-          if (cancelled || !switcher) return;
-          cycleIdx = (cycleIdx + 1) % CYCLE_ORDER.length;
-          const nextState = CYCLE_ORDER[cycleIdx];
-          for (let id = 0; id < CONFIG.renderer.robotCount; id++) {
-            switcher.setState(id, nextState);
-          }
-          setStats((s) => ({ ...s, cycleState: nextState }));
-        }, CYCLE_INTERVAL_MS);
-
-        // Standalone FPS counter that piggy-backs on rAF without touching
-        // the renderer's internals.
+        // Lightweight per-frame stats sampler — piggy-backs on rAF without
+        // touching the renderer or bridge internals. FPS is averaged over
+        // ~1 s windows; current tick polls the driver each frame.
         let frameCount = 0;
         let lastSampleAt = performance.now();
-        const sampleFps = () => {
+        const sampleStats = () => {
           if (cancelled) return;
           frameCount++;
           const now = performance.now();
           if (now - lastSampleAt >= 1000) {
             const fps = (frameCount * 1000) / (now - lastSampleAt);
-            setStats((s) => ({ ...s, fps }));
+            setStats((s) => ({ ...s, fps, currentTick: driver.getCurrentTick() }));
             frameCount = 0;
             lastSampleAt = now;
+          } else {
+            setStats((s) => ({ ...s, currentTick: driver.getCurrentTick() }));
           }
-          fpsRaf = requestAnimationFrame(sampleFps);
+          fpsRaf = requestAnimationFrame(sampleStats);
         };
-        fpsRaf = requestAnimationFrame(sampleFps);
+        fpsRaf = requestAnimationFrame(sampleStats);
+        tickRaf = fpsRaf;
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -97,10 +123,12 @@ export function App() {
 
     return () => {
       cancelled = true;
-      if (cycleTimer) clearInterval(cycleTimer);
       if (fpsRaf) cancelAnimationFrame(fpsRaf);
-      // Switcher must dispose before the renderer (it reads renderer-owned
-      // mixers; reverse order would touch disposed mixers).
+      if (tickRaf && tickRaf !== fpsRaf) cancelAnimationFrame(tickRaf);
+      // Bridge first (writes to instance.root), then switcher (reads
+      // renderer-owned mixers), then renderer. Reverse order would touch
+      // disposed objects.
+      bridge?.dispose();
       switcher?.dispose();
       renderer.dispose();
     };
@@ -119,10 +147,12 @@ export function App() {
 }
 
 interface DevHudProps {
-  stats: RendererStats;
+  stats: RaceStats;
 }
 
 function DevHud({ stats }: DevHudProps) {
+  const progress =
+    stats.totalTicks > 0 ? Math.min(100, (stats.currentTick / stats.totalTicks) * 100) : 0;
   return (
     <div
       style={{
@@ -139,11 +169,22 @@ function DevHud({ stats }: DevHudProps) {
         pointerEvents: 'none',
       }}
     >
-      <div>S4-05 — Renderer + State Switcher</div>
+      <div>S6-02 — Sim ↔ Renderer Bridge</div>
       <div>Robots: {stats.robotCount} / {CONFIG.renderer.robotCount}</div>
       <div>FPS: {stats.fps.toFixed(1)}</div>
       <div>Status: {stats.loadStatus}</div>
-      <div>Cycle: {stats.cycleState}</div>
+      {stats.loadStatus === 'ready' && (
+        <>
+          <div>Arena: {stats.arenaId} · Seed: {stats.seed}</div>
+          <div>
+            Tick: {stats.currentTick} / {stats.totalTicks} ({progress.toFixed(0)}%)
+          </div>
+          <div>
+            Winner:{' '}
+            {stats.winnerId !== null ? `robot ${stats.winnerId}` : '—'}
+          </div>
+        </>
+      )}
       {stats.errorMessage && (
         <div style={{ color: '#ff5577' }}>Error: {stats.errorMessage}</div>
       )}
@@ -198,7 +239,7 @@ function PeekOverlay({ loadStatus, errorMessage }: PeekOverlayProps) {
           pointerEvents: 'none',
         }}
       >
-        ROBOT TRAINING · DAY 1
+        SPRINT RACE · ARENA 01
       </div>
 
       {/* Loading + error states only */}

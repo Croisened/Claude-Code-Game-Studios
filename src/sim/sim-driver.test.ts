@@ -285,6 +285,23 @@ describe('SimDriver — event dispatch', () => {
     ]);
   });
 
+  it('fires simEnd events emitted at tick === result.ticks (one past the last frame)', () => {
+    // Regression for S6-02 bug: the engine emits `simEnd` at
+    // `tick = result.ticks` (one past the last poseFrame). The driver's
+    // `getCurrentTick()` clamps to `totalTicks - 1` for UI purposes, but
+    // event dispatch must use the unclamped tick or simEnd never fires.
+    const ticks = 4;
+    const events: TimelineEvent[] = [
+      { type: 'simStart', tick: 0, seed: 1, arenaId: 'a', rosterSize: 1 },
+      { type: 'simEnd', tick: ticks, winnerId: 0, reason: 'eventDone' },
+    ];
+    const driver = createSimDriver({ result: makeLinearResult({ ticks, events }) });
+    const heard: TimelineEvent[] = [];
+    driver.onEvent((e) => heard.push(e));
+    driver.update(TICK_DT * (ticks + 1)); // step past the end
+    expect(heard.map((e) => e.type)).toEqual(['simStart', 'simEnd']);
+  });
+
   it('preserves engine-emitted intra-tick ordering (eliminations before finishes)', () => {
     // Engine pushes eliminations first, then finishes within the same tick.
     // The driver must NOT re-sort.

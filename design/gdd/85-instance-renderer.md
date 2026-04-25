@@ -449,7 +449,8 @@ regardless of which path is taken. This is enforced as acceptance criterion
 |--------|------------------|------------------------|
 | Animation State Switcher | `RobotInstance.mixer`, `RobotInstance.clips` for state transitions | S4-05 |
 | Camera System | Scene reference (for camera attachment), `RobotInstance.root.position` for Follow Leader/ID modes | Sprint 6 |
-| Sim Engine Core | `RobotInstance.root.position` and `.rotation` to drive per-tick positions | Sprint 5 |
+| Sim Engine Core | Indirectly — produces the `SimResult` the [Sim Driver](./sim-driver.md) replays into `RobotInstance.root.position` / `.rotation` per frame | Sprint 5 |
+| [Sim ↔ Renderer Bridge](./sim-driver.md) | `RobotInstance.root.position` and `.rotation` writes per render frame, `getAllInstances()` to enumerate write targets | S6-02 |
 | Winner VFX | `RobotInstance.root` as spotlight target + camera orbit anchor | Sprint 6 |
 | Preact App Shell | `Renderer` instance via `useEffect` mount/dispose; canvas attached to a `ref` div | Sprint 6 |
 
@@ -466,8 +467,9 @@ Per `design-docs.md` rule, each downstream system's GDD must list
   CONFIG is the single source of truth, so the duplication is consistent
   by construction.
 - **Sim Engine** — the renderer is driven by sim state, not the other way
-  around. The sim mutates `RobotInstance.root.position`; the renderer
-  just renders. No back-channel.
+  around. The [Sim ↔ Renderer Bridge](./sim-driver.md) (S6-02) is the
+  authoritative writer of `RobotInstance.root.position` / `.rotation`
+  per render frame; the renderer just renders. No back-channel.
 - **Seedable PRNG** — the renderer uses fixed per-instance time offsets
   (`id * 0.07`) for the visual phase desync, not random offsets. No RNG
   dependency.
