@@ -5,7 +5,8 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Technology Stack
 
-- **Engine**: Three.js r168+ + enable3d (web 3D rendering + Rapier physics + game loop)
+- **Engine**: Three.js r168+ (web 3D rendering — scene graph, materials, animation)
+- **UI Framework**: Preact 10.22+ via `@preact/preset-vite` (single-page app shell, hash routing)
 - **Language**: TypeScript (strict mode, browser target)
 - **Version Control**: Git with trunk-based development
 - **Build System**: Vite
@@ -14,6 +15,12 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 > **Note**: This project uses Three.js (not Godot/Unity/Unreal). Engine-specialist
 > subagents (godot-specialist, unity-specialist, etc.) do not apply. Use
 > `gameplay-programmer` and `engine-programmer` agents for implementation work.
+>
+> **Pivot history**: Sprints 1–3 used Three.js + enable3d + Rapier physics for an
+> endless-runner prototype. After the Sprint 3 retrospective the project pivoted
+> to Robo Rhapsody Sim (a passive-watch event simulator) and the runner stack is
+> archived under `archive/endless-runner/`. v1 has no physics — robots are
+> kinematic, position-driven by the sim.
 
 ## Project Structure
 

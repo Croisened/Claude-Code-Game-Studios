@@ -1,71 +1,91 @@
 # Technical Preferences
 
-<!-- Updated 2026-03-27 for Robo Rhapsody — Neon Fugitive (Three.js web runner) -->
+<!-- Updated 2026-04-24 for Robo Rhapsody Sim (Three.js + Preact passive-watch simulator) -->
 <!-- All agents reference this file for project-specific standards and conventions. -->
 
 ## Engine & Language
 
-- **Engine**: Three.js r168+ + enable3d 2.x (Rapier physics integration + game loop)
+- **Engine**: Three.js r168+ (web 3D rendering — scene graph, materials, animation)
+- **UI Framework**: Preact 10.22+ via `@preact/preset-vite` (single-page app shell, hash routing)
 - **Language**: TypeScript (strict mode, `"strict": true` in tsconfig)
 - **Rendering**: Three.js WebGL renderer — desktop web, Chrome/Firefox/Safari latest
-- **Physics**: Rapier 3D via enable3d (`@dimforge/rapier3d-compat`)
+- **Physics**: None. v1 robots are kinematic, position-driven by the sim.
+
+> **Pivot history**: Sprints 1–3 used `enable3d` + Rapier 3D for an endless-runner
+> prototype. After the pivot to Robo Rhapsody Sim, physics was removed; the runner
+> code lives at `archive/endless-runner/` for reference.
 
 ## Naming Conventions
 
-- **Classes**: PascalCase — `RunnerSystem`, `ObstacleSystem`, `GameStateManager`
-- **Variables / Functions**: camelCase — `currentSpeed`, `spawnInterval`, `trySpawn()`
-- **Events / Actions**: camelCase string constants — `'stateChanged'`, `'collisionDetected'`, `'action'`
-- **Files**: kebab-case — `runner-system.ts`, `obstacle-system.ts`, `game-state-manager.ts`
-- **Config objects**: SCREAMING_SNAKE_CASE — `RUNNER_SYSTEM_CONFIG`, `OBSTACLE_TYPE_REGISTRY`
-- **Game constants**: SCREAMING_SNAKE_CASE — `LANE_LEFT`, `LANE_CENTER`, `LANE_RIGHT`, `OBSTACLE_GROUP`
+- **Functions / Factories**: camelCase — `createRenderer`, `createAnimationStateSwitcher`, `createRng`
+- **Variables / Methods**: camelCase — `setState`, `getInstance`, `dispose`
+- **Events / Action names**: camelCase string constants when needed — `'cycleAdvance'`, `'mountReady'`
+- **Files**: kebab-case — `state-switcher.ts`, `asset-loader.ts`, `renderer.test.ts`
+- **Config objects**: SCREAMING_SNAKE_CASE for module-level constants — `CYCLE_ORDER`, `MAX_DT`, `INTERNAL_CAMERA_FOV`
+- **Type aliases / Interfaces**: PascalCase — `Renderer`, `RobotInstance`, `RobotAnimationState`, `AnimationStateSwitcher`
+- **Project-wide config**: `CONFIG.<subsystem>.<key>` — read-only at runtime, declared in `src/config/index.ts`
 - **Scenes/Prefabs**: N/A — Three.js scene graph managed in code, no scene files
 
 ## Performance Budgets
 
-- **Target Framerate**: 60fps on mid-range desktop hardware (2020+ integrated GPU)
+- **Target Framerate**: 60fps sustained on mid-range desktop hardware (2020+ integrated GPU)
 - **Frame Budget**: ~16.7ms total
-  - Game logic (all systems): < 1ms
-  - Rapier physics step: < 2ms
+  - Sim tick (Sprint 5+): < 2ms
+  - Renderer mixer updates (85 instances): < 3ms
   - Three.js render + draw calls: < 10ms
-  - Headroom / misc: ~3.7ms
-- **Draw Calls**: < 50 per frame (use instanced geometry for repeated obstacle meshes)
-- **Memory Ceiling**: < 200MB JS heap during an active run
+  - Headroom / misc: ~1.7ms
+- **Draw Calls**: ~86 baseline (85 robots + 1 ground plane). Per-instance materials
+  forbid further automatic batching; this is acceptable for v1 per the renderer GDD.
+- **Memory Ceiling**: < 200MB JS heap. Currently ~50MB at idle, ~70MB during run cycles.
 
 ## Testing
 
-- **Framework**: Vitest (TypeScript-native, fast, browser-compatible mocks)
-- **Minimum Coverage**: All systems with formulas or state machines
+- **Framework**: Vitest (TypeScript-native, fast, Node test environment)
+- **Minimum Coverage**: All systems with formulas, state machines, or public APIs
 - **Required Tests**:
-  - All tuning formula calculations (jump arc, speed ramp, hitbox clearance)
-  - GSM state machine: all valid and invalid transitions
-  - Collision group assignments (OBSTACLE_GROUP filter)
-  - Input System: enable/disable idempotency, key repeat suppression
+  - All tuning formula calculations (sim trait→stat curves, when authored Sprint 5+)
+  - State machines: all valid and invalid transitions (e.g., AnimationStateSwitcher
+    covers every run/idle/death pair)
+  - Public API contracts: input validation, error paths, idempotent dispose
+  - Determinism: same seed produces same RNG sequence (PRNG)
+- **Test seams**: Modules that depend on a real WebGL context, DOM, or `requestAnimationFrame`
+  expose injectable factories (e.g., `webGLRendererFactory`, `loadAssets`, `raf`)
+  so tests run headlessly in Node. See `src/renderer/renderer.ts` for the canonical
+  pattern.
 
 ## Forbidden Patterns
 
-- **Magic numbers in gameplay code** — all configurable values must live in named
-  config objects (`RUNNER_SYSTEM_CONFIG`, `OBSTACLE_SYSTEM_CONFIG`, etc.)
-- **Non-Runner callers of `ER.setScrollSpeed()`** — Runner System is the sole caller
-  per the Environment Renderer GDD contract
-- **Difficulty Curve calling `ER.setScrollSpeed()` directly** — must go through
-  `RS.setSpeed()` (Runner System propagates to ER)
-- **Dynamic obstacle allocation during a run** — obstacle pool is pre-allocated at
-  startup; no `new` calls for obstacle objects inside the game loop
-- **Direct Three.js `position.x` writes for physics-owned objects** — set Rapier body
-  translation via `setTranslation()` or `setNextKinematicTranslation()`; let enable3d
-  sync to the Three.js object
+- **Magic numbers in user-facing code** — all configurable values must live in
+  `CONFIG.<subsystem>.<key>` (Config Module GDD). Implementation-detail constants
+  that are NOT tuning surfaces (e.g., `MAX_DT`, `PHASE_OFFSET_COEFF`) live in module
+  scope as named constants and are documented in their owning GDD §7.
+- **`Math.random()` anywhere in `src/`** — use the seeded RNG (`createRng` from
+  `@/sim/rng`). Determinism matters when sim replay returns in v1.1+.
+- **`AnimationAction.play()` outside the Animation State Switcher** — the switcher
+  is the sole owner of `play()` and `crossFadeTo()` calls codebase-wide. Renderer
+  builds mixers + clipAction refs only.
+- **Direct mutation of `RobotInstance.root.position`/`rotation` from non-sim code** —
+  the sim is the only legitimate writer of per-tick instance pose. Camera and VFX
+  systems read positions but do not write them.
+- **Mounting the renderer twice on the same instance** — call sites must dispose
+  and create a fresh `createRenderer()` for re-mount.
 
 ## Allowed Libraries / Addons
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| `three` | r168+ | 3D rendering, scene graph, camera, geometry |
-| `enable3d` | 2.x | Rapier physics integration, game loop, input helpers |
-| `@dimforge/rapier3d-compat` | bundled via enable3d | Physics engine (Rapier 3D WASM) |
-| `vite` | latest | Build tool, dev server, HMR |
+| `three` | r168+ | 3D rendering, scene graph, camera, geometry, animation |
+| `preact` | ^10.22.0 | UI framework — App shell, Landing, hash routing |
+| `@preact/preset-vite` | ^2.8.2 | Vite plugin for Preact JSX + HMR |
+| `vite` | ^5.2.0 | Build tool, dev server, HMR |
+| `vite-plugin-static-copy` | ^1.0.6 | Copy `assets/` into the production build |
+| `vitest` | ^1.6.0 | Test runner |
+| `tsx` | ^4.21.0 | TS execution for build scripts (e.g., CSV→JSON transform) |
+| `jsdom` | ^29.0.1 | Optional DOM mock for tests that need it (most use Node + injectable seams) |
 
 ## Architecture Decisions Log
 
-| ADR | Decision | Date |
-|-----|----------|------|
-| [ADR-001](../../../docs/architecture/ADR-001-web-runner-architecture.md) | Three.js + enable3d for web runner rendering and physics | 2026-03-27 |
+| ADR | Decision | Date | Status |
+|-----|----------|------|--------|
+| [ADR-001](../../../docs/architecture/ADR-001-web-runner-architecture.md) | Three.js + enable3d for the endless-runner prototype | 2026-03-27 | Superseded — runner archived after pivot |
+| [ADR-002](../../../docs/architecture/ADR-002-web3-library.md) | Web3 library selection for the runner's wallet integration | 2026-03-27 | Superseded — Web3 dropped from v1 scope |
