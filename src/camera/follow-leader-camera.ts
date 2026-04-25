@@ -95,18 +95,29 @@ export function createFollowLeaderCamera(
   const lookAtTarget = new THREE.Vector3();
   let initialised = false;
 
-  function findLeaderX(): number {
+  /**
+   * Find the leader's full (x, z). The leader is the highest-X active
+   * instance; the lateral z is read so the camera tracks lane drift
+   * (separation force, future lane-change AI). Without z tracking, a
+   * leader that drifts off-axis appears at frame edges instead of
+   * centered.
+   */
+  function findLeaderXZ(): { x: number; z: number } {
     const instances = renderer.getAllInstances();
-    if (instances.length === 0) return 0;
+    if (instances.length === 0) return { x: 0, z: 0 };
     let maxX = -Infinity;
+    let leaderZ = 0;
     for (const inst of instances) {
       const x = inst.root.position.x;
-      if (x > maxX) maxX = x;
+      if (x > maxX) {
+        maxX = x;
+        leaderZ = inst.root.position.z;
+      }
     }
-    // Edge case: empty roster or all positions at NaN. Fall back to current
-    // camera x so we don't slide to -Infinity.
-    if (!Number.isFinite(maxX)) return camera.position.x;
-    return maxX;
+    // Edge case: empty roster or all positions at NaN. Fall back to
+    // current camera placement so we don't drift to garbage values.
+    if (!Number.isFinite(maxX)) return { x: camera.position.x, z: 0 };
+    return { x: maxX, z: leaderZ };
   }
 
   function tick(): void {
@@ -121,28 +132,29 @@ export function createFollowLeaderCamera(
     const dt = Math.min((t - lastTimeMs) / 1000, MAX_DT_SECONDS);
     lastTimeMs = t;
 
-    const leaderX = findLeaderX();
+    const { x: leaderX, z: leaderZ } = findLeaderXZ();
     const targetCameraX = leaderX + cfg.aheadOffsetX;
+    const targetCameraZ = leaderZ + cfg.offsetZ;
 
-    // Lock Y / Z to the configured offset so the spectator angle stays
-    // constant — only X tracks the leader.
     camera.position.y = cfg.offsetY;
-    camera.position.z = cfg.offsetZ;
 
     if (!initialised) {
       // First-frame snap: jump straight to the configured framing to
-      // avoid a long ease-in from the original placeholder X (0).
+      // avoid a long ease-in from the original placeholder origin.
       camera.position.x = targetCameraX;
+      camera.position.z = targetCameraZ;
       initialised = true;
     } else if (dt > 0) {
       const alpha = 1 - Math.exp(-cfg.lerpRatePerSecond * dt);
       camera.position.x += (targetCameraX - camera.position.x) * alpha;
+      camera.position.z += (targetCameraZ - camera.position.z) * alpha;
     }
 
     // lookAt sits at a fixed offset from the LEADER (not the camera) so
-    // both translate identically as the race progresses, holding the
-    // pitch and framing constant.
-    lookAtTarget.set(leaderX + cfg.lookAtAheadX, cfg.lookAtY, 0);
+    // the framing stays constant as the race progresses. Tracking leader
+    // z keeps the leader laterally centered even when separation force
+    // pushes them off the arena centerline.
+    lookAtTarget.set(leaderX + cfg.lookAtAheadX, cfg.lookAtY, leaderZ);
     camera.lookAt(lookAtTarget);
   }
 

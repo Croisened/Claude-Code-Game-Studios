@@ -5,6 +5,7 @@ import { createAnimationStateSwitcher } from '@/animation/state-switcher';
 import { createSimDriver } from '@/sim/sim-driver';
 import { createSimRendererBridge } from '@/sim/sim-renderer-bridge';
 import { createFollowLeaderCamera } from '@/camera/follow-leader-camera';
+import { createFinishLine } from '@/arena-visuals/finish-line';
 import { runSim } from '@/sim/engine';
 import { createSprintRaceModule } from '@/sim/sprint-race';
 import { loadRoster } from '@/sim/robot-roster';
@@ -132,6 +133,11 @@ export function App() {
         });
         await renderer.mount(container, camera);
         if (cancelled) return;
+
+        // Drop the finish-line marker onto the floor at the arena's
+        // last gate. Disposed automatically when the renderer's scene
+        // traversal walks the mesh on dispose().
+        renderer.addToScene(createFinishLine(arena));
 
         // Build the deterministic race result, then a driver to play it.
         const result = runSim({

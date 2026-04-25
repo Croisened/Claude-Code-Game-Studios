@@ -189,11 +189,14 @@ export const CONFIG = {
       offsetZ: 16,
       /**
        * lookAt offset ahead of leader along +X. Negative = lookAt sits
-       * behind the leader so the leader and trailing field both frame
-       * naturally. Combined with the ahead camera position, this gives
-       * a tilted-back, looking-over-the-field framing.
+       * behind the leader. Smaller magnitude (closer to 0) keeps the
+       * leader near frame center; larger magnitude tilts the framing
+       * deeper into the trailing field at the cost of pushing the
+       * leader toward the foreground edge. -6 is the sweet spot at
+       * `arena-01.json::startGrid.rowSpacing = 6` — leader sits ~12°
+       * off-center while the field still reads behind.
        */
-      lookAtAheadX: -12,
+      lookAtAheadX: -6,
       /** lookAt height above ground plane. */
       lookAtY: 0.5,
       /**

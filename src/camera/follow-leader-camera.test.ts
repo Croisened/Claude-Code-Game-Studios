@@ -8,9 +8,10 @@ import type { Renderer, RobotInstance } from '@/renderer/renderer';
 // Fakes
 // ---------------------------------------------------------------------------
 
-function makeFakeInstance(id: number, x: number): RobotInstance {
+function makeFakeInstance(id: number, x: number, z = 0): RobotInstance {
   const root = new THREE.Object3D();
   root.position.x = x;
+  root.position.z = z;
   return {
     id,
     root,
@@ -19,8 +20,14 @@ function makeFakeInstance(id: number, x: number): RobotInstance {
   };
 }
 
-function makeFakeRenderer(positions: ReadonlyArray<number>): Renderer {
-  const instances: RobotInstance[] = positions.map((x, i) => makeFakeInstance(i, x));
+function makeFakeRenderer(
+  positions: ReadonlyArray<number | { x: number; z: number }>,
+): Renderer {
+  const instances: RobotInstance[] = positions.map((p, i) =>
+    typeof p === 'number'
+      ? makeFakeInstance(i, p)
+      : makeFakeInstance(i, p.x, p.z),
+  );
   const byId = new Map(instances.map((i) => [i.id, i]));
   return {
     mount: async () => {},
@@ -117,6 +124,30 @@ describe('createFollowLeaderCamera — leader selection', () => {
     expect(camera.position.x).toBeCloseTo(100 + CONFIG.camera.follow.aheadOffsetX, 4);
     follower.dispose();
   });
+
+  it('tracks the leader’s lateral z so the camera stays centered on the leader', () => {
+    // Leader is at x=50, z=-7 (drifted left of arena centerline).
+    // Camera should sit at z = leader.z + offsetZ, not just offsetZ.
+    const renderer = makeFakeRenderer([
+      { x: 5, z: 0 },
+      { x: 50, z: -7 },
+      { x: 30, z: 4 },
+    ]);
+    const camera = makeCamera();
+    const clock = makeScriptedClock();
+    const follower = createFollowLeaderCamera({
+      camera,
+      renderer,
+      raf: clock.raf,
+      cancelRaf: clock.cancelRaf,
+      now: clock.now,
+    });
+    follower.start();
+    clock.step(0);
+    clock.step(16);
+    expect(camera.position.z).toBeCloseTo(-7 + CONFIG.camera.follow.offsetZ, 4);
+    follower.dispose();
+  });
 });
 
 describe('createFollowLeaderCamera — smoothing', () => {
@@ -196,8 +227,9 @@ describe('createFollowLeaderCamera — smoothing', () => {
 });
 
 describe('createFollowLeaderCamera — lookAt', () => {
-  it('points the camera at (leaderX + lookAtAheadX, lookAtY, 0)', () => {
-    const renderer = makeFakeRenderer([100]);
+  it('points the camera at (leaderX + lookAtAheadX, lookAtY, leaderZ)', () => {
+    // Leader at (100, 0, -3). lookAt z must follow leaderZ, not stay at 0.
+    const renderer = makeFakeRenderer([{ x: 100, z: -3 }]);
     const camera = makeCamera();
     const clock = makeScriptedClock();
     const follower = createFollowLeaderCamera({
@@ -213,7 +245,7 @@ describe('createFollowLeaderCamera — lookAt', () => {
     const expectedTarget = new THREE.Vector3(
       100 + CONFIG.camera.follow.lookAtAheadX,
       CONFIG.camera.follow.lookAtY,
-      0,
+      -3,
     );
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
     const toTarget = expectedTarget.clone().sub(camera.position).normalize();
