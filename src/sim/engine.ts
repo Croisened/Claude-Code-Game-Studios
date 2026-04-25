@@ -124,11 +124,29 @@ export interface SimResult {
  * Default `EventModule.init` helper. Places each robot at its arena start
  * grid slot, all active, facing +X (yaw = 0). Modules typically delegate
  * here unless they need a different starting layout.
+ *
+ * If `slotForId` is supplied, robot `i` is placed at slot `slotForId[i]`
+ * instead of slot `i`. The intended use is a seeded permutation from
+ * `shuffledStartSlots` (`src/sim/arena.ts`) so race-to-race starting
+ * positions vary with the seed. Robot identity (id, traits, skin) is
+ * unchanged — only its starting (x, z) shifts.
+ *
+ * Validation: `slotForId.length` must equal `roster.length`.
  */
-export function buildStartPoses(roster: RobotRoster, arena: Arena): RobotPose[] {
+export function buildStartPoses(
+  roster: RobotRoster,
+  arena: Arena,
+  slotForId?: readonly number[],
+): RobotPose[] {
+  if (slotForId !== undefined && slotForId.length !== roster.length) {
+    throw new Error(
+      `buildStartPoses: slotForId length (${slotForId.length}) must equal roster length (${roster.length})`,
+    );
+  }
   const poses: RobotPose[] = new Array(roster.length);
   for (let i = 0; i < roster.length; i++) {
-    const { x, z } = getStartPosition(arena, i);
+    const slot = slotForId ? slotForId[i] : i;
+    const { x, z } = getStartPosition(arena, slot);
     poses[i] = {
       id: i,
       x,

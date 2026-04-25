@@ -282,30 +282,66 @@ export async function loadArena(opts: LoadArenaOptions = {}): Promise<Arena> {
 }
 
 /**
- * World-space (x, z) for the start position of robot `id` on `arena`.
+ * World-space (x, z) for the start position of slot `slotId` on `arena`.
  * Order: row-major across lanes, packed back through rows. Lanes are
  * centered around z = 0; row 0 is at the start line (x = 0); subsequent
  * rows step backward along -X.
+ *
+ * Note: `slotId` is a *grid slot*, not necessarily a robot id. Sprint
+ * races permute robot id → slot via `shuffledStartSlots` (S6-03 polish);
+ * other event modules may pass `id` directly for the legacy
+ * id-deterministic layout.
  */
 export function getStartPosition(
   arena: Arena,
-  robotId: number,
+  slotId: number,
 ): { x: number; z: number } {
   const capacity = arena.startGrid.lanes * arena.startGrid.rows;
   if (
-    typeof robotId !== 'number' ||
-    !Number.isInteger(robotId) ||
-    robotId < 0 ||
-    robotId >= capacity
+    typeof slotId !== 'number' ||
+    !Number.isInteger(slotId) ||
+    slotId < 0 ||
+    slotId >= capacity
   ) {
     throw new Error(
-      `getStartPosition: robotId must be an integer in [0, ${capacity}), got ${robotId}`,
+      `getStartPosition: slotId must be an integer in [0, ${capacity}), got ${slotId}`,
     );
   }
   const { lanes, laneSpacing, rowSpacing } = arena.startGrid;
-  const lane = robotId % lanes;
-  const row = Math.floor(robotId / lanes);
+  const lane = slotId % lanes;
+  const row = Math.floor(slotId / lanes);
   const z = (lane - (lanes - 1) / 2) * laneSpacing;
   const x = -row * rowSpacing;
   return { x, z };
+}
+
+/**
+ * Build a length-`count` permutation of `[0..count-1]` using a Fisher-Yates
+ * shuffle driven by the supplied seeded `rng`. Used by Sprint Race to map
+ * robot id → starting grid slot, so race-to-race start positions vary
+ * with the seed (a back-row draw means the robot has further to run).
+ *
+ * Determinism: same `rng` draws (i.e. same seed at the engine level) →
+ * same permutation. The shuffle consumes exactly `count - 1` rng calls.
+ *
+ * Throws on negative or non-integer `count`. `count === 0` returns `[]`.
+ */
+export function shuffledStartSlots(
+  rng: () => number,
+  count: number,
+): number[] {
+  if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
+    throw new Error(
+      `shuffledStartSlots: count must be a non-negative integer, got ${count}`,
+    );
+  }
+  const slots = new Array<number>(count);
+  for (let i = 0; i < count; i++) slots[i] = i;
+  for (let i = count - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = slots[i];
+    slots[i] = slots[j];
+    slots[j] = tmp;
+  }
+  return slots;
 }

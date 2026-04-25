@@ -106,6 +106,18 @@ spectator watching the same seed.
   so robots cannot leave the visible arena. The lateral push is z-only —
   X is reserved for forward motion (R3).
 - **R5.** y is fixed at 0. The arena is a flat plane in v1.
+- **R5a.** Starting slots are seed-permuted, not id-mapped. `init`
+  builds a Fisher-Yates permutation `slotForId[i]` via
+  `shuffledStartSlots(ctx.rng, ctx.roster.length)` (Arena Loader
+  helper) and passes it to `buildStartPoses`. Robot identity (id,
+  traits, skin) is preserved; only the (x, z) the robot starts at is
+  shuffled. This is the primary source of race-to-race outcome
+  variance in v1 — back-row draws have to run further, which can
+  unseat the structural-speed favorite when combined with the arena's
+  `rowSpacing = 6.0` stagger (24 m max delta vs. ~7.7 m structural
+  lead for the top robot). Determinism preserved: the shuffle uses
+  the same seeded `ctx.rng` and consumes exactly `roster.length - 1`
+  rng draws at init.
 
 ### Gate-crossing rules
 

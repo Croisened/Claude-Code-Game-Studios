@@ -393,4 +393,40 @@ describe('buildStartPoses helper', () => {
       expect(poses[i].yaw).toBe(0);
     }
   });
+
+  it('honors slotForId — robot identity stays, but (x, z) follows the permuted slot', () => {
+    const arena = makeArena();
+    const roster = makeRoster();
+    // Slot permutation: reverse order. Robot 0 takes the last slot,
+    // robot N-1 takes slot 0.
+    const slotForId = roster.map((_, i) => roster.length - 1 - i);
+    const permuted = buildStartPoses(roster, arena, slotForId);
+    const identity = buildStartPoses(roster, arena);
+
+    for (let i = 0; i < roster.length; i++) {
+      // Identity preserved on the pose itself.
+      expect(permuted[i].id).toBe(i);
+      // Pose at slot[i] should match the identity build at slot[slotForId[i]].
+      expect(permuted[i].x).toBeCloseTo(identity[slotForId[i]].x, 9);
+      expect(permuted[i].z).toBeCloseTo(identity[slotForId[i]].z, 9);
+    }
+  });
+
+  it('throws when slotForId length disagrees with roster length', () => {
+    const arena = makeArena();
+    const roster = makeRoster();
+    expect(() =>
+      buildStartPoses(roster, arena, roster.slice(0, roster.length - 1).map((_, i) => i)),
+    ).toThrow(/slotForId length/);
+  });
+
+  it('default behavior unchanged when slotForId is omitted', () => {
+    const arena = makeArena();
+    const a = buildStartPoses(makeRoster(), arena);
+    const b = buildStartPoses(makeRoster(), arena, undefined);
+    for (let i = 0; i < a.length; i++) {
+      expect(a[i].x).toBe(b[i].x);
+      expect(a[i].z).toBe(b[i].z);
+    }
+  });
 });

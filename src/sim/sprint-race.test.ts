@@ -192,6 +192,36 @@ describe('createSprintRaceModule — determinism', () => {
     const sameFinish = a.winnerId === b.winnerId && JSON.stringify(a.finishOrder) === JSON.stringify(b.finishOrder);
     expect(samePoses && sameFinish).toBe(false);
   });
+
+  it('seed-driven slot shuffle yields different starting positions per seed', () => {
+    // Direct check on the shuffle output: same roster, different seed →
+    // different (x, z) for at least some robots on the very first frame.
+    const a = runSim({
+      seed: 1,
+      roster: makeRoster(85),
+      arena: arena01(),
+      eventModule: createSprintRaceModule(),
+    });
+    const b = runSim({
+      seed: 2,
+      roster: makeRoster(85),
+      arena: arena01(),
+      eventModule: createSprintRaceModule(),
+    });
+    const stride = 5;
+    const f0a = a.poseFrames[0].data;
+    const f0b = b.poseFrames[0].data;
+    let differs = 0;
+    for (let id = 0; id < 85; id++) {
+      const ax = f0a[id * stride + 1];
+      const az = f0a[id * stride + 3];
+      const bx = f0b[id * stride + 1];
+      const bz = f0b[id * stride + 3];
+      if (ax !== bx || az !== bz) differs++;
+    }
+    // Most robots should land in different slots between seeds.
+    expect(differs).toBeGreaterThan(60);
+  });
 });
 
 describe('createSprintRaceModule — gate ordering', () => {

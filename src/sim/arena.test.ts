@@ -2,9 +2,11 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   loadArena,
   getStartPosition,
+  shuffledStartSlots,
   type Arena,
   type LoadArenaOptions,
 } from '@/sim/arena';
+import { createRng } from '@/sim/rng';
 import realArenaJson from '../../assets/data/arenas/arena-01.json';
 
 interface ArenaPayload {
@@ -49,7 +51,10 @@ describe('loadArena — happy path (AC3, AC4)', () => {
       lanes: 17,
       rows: 5,
       laneSpacing: 2.0,
-      rowSpacing: 2.0,
+      // 6.0 spacing: stagger of 24 m between front and back row, enough
+      // for shuffled back-row draws to flip the winner past the top
+      // robot's structural speed lead.
+      rowSpacing: 6.0,
     });
     expect(arena.gates).toHaveLength(3);
     expect(arena.gates[0]).toEqual({ name: 'gate_a', x: 80, cullToCount: 28 });
@@ -98,15 +103,17 @@ describe('getStartPosition (AC7, AC8, AC9)', () => {
     expect(p.z).toBeCloseTo(0, 9);
   });
 
-  it('id 17 is the leftmost second-row position (AC7)', async () => {
+  it('slot 17 is the leftmost second-row position (AC7)', async () => {
     const p = getStartPosition(await loadArena01(), 17);
-    expect(p.x).toBeCloseTo(-2, 9);
+    // Second row → x = -rowSpacing = -6 (rowSpacing 6.0 in arena-01).
+    expect(p.x).toBeCloseTo(-6, 9);
     expect(p.z).toBeCloseTo(-16, 9);
   });
 
-  it('id 84 is the rightmost back-row position (AC7)', async () => {
+  it('slot 84 is the rightmost back-row position (AC7)', async () => {
     const p = getStartPosition(await loadArena01(), 84);
-    expect(p.x).toBeCloseTo(-8, 9);
+    // Row 4 (last) → x = -4 * rowSpacing = -24.
+    expect(p.x).toBeCloseTo(-24, 9);
     expect(p.z).toBeCloseTo(16, 9);
   });
 
@@ -127,12 +134,66 @@ describe('getStartPosition (AC7, AC8, AC9)', () => {
     expect(seen.size).toBe(85);
   });
 
-  it('rejects out-of-range robotId (AC9)', async () => {
+  it('rejects out-of-range slotId (AC9)', async () => {
     const arena = await loadArena01();
     expect(() => getStartPosition(arena, -1)).toThrow(/getStartPosition.*-1/);
     expect(() => getStartPosition(arena, 85)).toThrow(/getStartPosition.*85/);
     expect(() => getStartPosition(arena, 1.5)).toThrow(/getStartPosition.*1\.5/);
     expect(() => getStartPosition(arena, NaN)).toThrow(/getStartPosition.*NaN/);
+  });
+});
+
+describe('shuffledStartSlots', () => {
+  it('returns a permutation of [0..count-1]', () => {
+    const rng = createRng(123);
+    const slots = shuffledStartSlots(rng, 85);
+    expect(slots).toHaveLength(85);
+    const sorted = [...slots].sort((a, b) => a - b);
+    for (let i = 0; i < 85; i++) expect(sorted[i]).toBe(i);
+  });
+
+  it('is deterministic for the same rng draws (same seed → same shuffle)', () => {
+    const a = shuffledStartSlots(createRng(42), 85);
+    const b = shuffledStartSlots(createRng(42), 85);
+    expect(a).toEqual(b);
+  });
+
+  it('produces different permutations for different seeds', () => {
+    const a = shuffledStartSlots(createRng(1), 85);
+    const b = shuffledStartSlots(createRng(2), 85);
+    expect(a).not.toEqual(b);
+  });
+
+  it('does not place every robot at its identity slot (avoids identity-trivial output)', () => {
+    // With 85 elements and a uniform shuffle, fixed points are rare;
+    // if every slot[i] === i we know the shuffle is broken.
+    const slots = shuffledStartSlots(createRng(7), 85);
+    let identical = 0;
+    for (let i = 0; i < slots.length; i++) if (slots[i] === i) identical++;
+    expect(identical).toBeLessThan(slots.length);
+  });
+
+  it('handles edge sizes', () => {
+    expect(shuffledStartSlots(createRng(1), 0)).toEqual([]);
+    expect(shuffledStartSlots(createRng(1), 1)).toEqual([0]);
+  });
+
+  it('throws on invalid count', () => {
+    const rng = createRng(1);
+    expect(() => shuffledStartSlots(rng, -1)).toThrow(/non-negative integer/);
+    expect(() => shuffledStartSlots(rng, 1.5)).toThrow(/non-negative integer/);
+    expect(() => shuffledStartSlots(rng, NaN)).toThrow(/non-negative integer/);
+  });
+
+  it('consumes exactly count - 1 rng draws (count > 0)', () => {
+    let calls = 0;
+    const real = createRng(99);
+    const counted = () => {
+      calls++;
+      return real();
+    };
+    shuffledStartSlots(counted, 85);
+    expect(calls).toBe(84);
   });
 });
 

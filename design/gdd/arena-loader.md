@@ -233,9 +233,24 @@ export function loadArena(opts?: LoadArenaOptions): Promise<Arena>;
  */
 export function getStartPosition(
   arena: Arena,
-  robotId: number,
+  slotId: number,
 ): { x: number; z: number };
+
+/**
+ * Fisher-Yates shuffle of `[0..count-1]` driven by a seeded rng.
+ * Sprint Race calls this in `EventModule.init` to permute robot id →
+ * starting slot, so race-to-race outcomes vary with the seed even
+ * when the roster's stat distribution is fixed.
+ */
+export function shuffledStartSlots(
+  rng: () => number,
+  count: number,
+): number[];
 ```
+
+`getStartPosition` takes a *grid slot* id, not a robot id. Sprint races
+permute id → slot via `shuffledStartSlots`; other event modules may
+pass the robot id directly for the legacy id-deterministic layout.
 
 **Worked example: `arena-01.json` (the v1 sprint-race arena):**
 
@@ -243,25 +258,33 @@ export function getStartPosition(
 length      = 240 m
 width       =  40 m
 lanes       =  17        (z covers −16.0 .. +16.0 with 2.0 spacing)
-rows        =   5        (x covers   0.0 .. −8.0 with 2.0 spacing)
+rows        =   5        (x covers   0.0 .. −24.0 with 6.0 spacing)
 grid capacity = 85       (= roster count, exact match)
 gate_a      = 80 m,  cullToCount = 28
 gate_b      = 160 m, cullToCount = 10
 finish      = 240 m, cullToCount =  1
 ```
 
-Start position math: lane index `L = id % lanes`, row index
-`R = floor(id / lanes)`. World coords:
+Start position math: lane index `L = slot % lanes`, row index
+`R = floor(slot / lanes)`. World coords:
 
 ```
 z = (L − (lanes − 1) / 2) * laneSpacing
 x = −R * rowSpacing
 ```
 
-Robot id 0: `L=0, R=0` → `z = (0 − 8) * 2 = −16`, `x = 0`.
-Robot id 8: `L=8, R=0` → `z = 0`, `x = 0` (the middle lane, front row).
-Robot id 17: `L=0, R=1` → `z = −16`, `x = −2`.
-Robot id 84: `L=16, R=4` → `z = +16`, `x = −8`.
+Slot 0: `L=0, R=0` → `z = (0 − 8) * 2 = −16`, `x = 0`.
+Slot 8: `L=8, R=0` → `z = 0`, `x = 0` (the middle lane, front row).
+Slot 17: `L=0, R=1` → `z = −16`, `x = −6`.
+Slot 84: `L=16, R=4` → `z = +16`, `x = −24` (rightmost back-row).
+
+**Why the deep stagger?** With `rowSpacing = 6.0`, the back row sits 24 m
+behind the front. The fastest robot in the production roster
+(`fullSend = 95`) accumulates only ~7.7 m of structural lead over the
+field by the 240 m finish line; a back-row draw therefore can flip the
+race outcome to a different favorite, which is the entire point of
+shuffling slots in the first place. A smaller `rowSpacing` (e.g. 2.0)
+preserves the visual grid but no longer creates exciting variance.
 
 **Module-scope constants:**
 

@@ -22,7 +22,7 @@
 
 import { CONFIG } from '@/config';
 import { buildStartPoses, type EventModule, type RobotPose, type TickContext, type TickResult } from '@/sim/engine';
-import type { Arena } from '@/sim/arena';
+import { shuffledStartSlots, type Arena } from '@/sim/arena';
 import type { RobotRoster } from '@/sim/robot-roster';
 
 const ELIM_REASON_RACE_OVER = 'race_over';
@@ -167,7 +167,11 @@ export function createSprintRaceModule(): EventModule {
   return {
     init(ctx: { roster: RobotRoster; arena: Arena; rng: () => number }): RobotPose[] {
       ensureState(ctx.arena, ctx.roster.length);
-      return buildStartPoses(ctx.roster, ctx.arena);
+      // Seed-driven slot permutation. Robots that draw a back-row slot
+      // have further to run; race-to-race outcomes vary with the seed
+      // even when stat distributions stay constant.
+      const slotForId = shuffledStartSlots(ctx.rng, ctx.roster.length);
+      return buildStartPoses(ctx.roster, ctx.arena, slotForId);
     },
 
     tick(ctx: TickContext): TickResult {
