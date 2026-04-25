@@ -94,8 +94,17 @@ spectator watching the same seed.
   0.5` (with `stat.chaos ≤ 1` and `chaosScale ≤ 0.5`, jitter ≥ 0.5) keeps
   velocity non-negative as long as `stat.speed > 0` (which is guaranteed
   by `traitToStat.speed.base = 0.5`).
-- **R4.** Lane (z) and yaw are fixed for the entire run at their start-grid
-  values. v1 has no lane changes; the test suite asserts this invariant.
+- **R4.** Yaw is fixed at 0 for the entire run (sim convention: 0 = facing
+  +X). v1 has no rotation; the test suite asserts this invariant.
+- **R4a.** Lane (z) shifts each tick by a Boids-style separation push.
+  Each active robot accumulates a lateral force from every other active
+  robot inside `CONFIG.sim.sprintRace.separationRadius`, with magnitude
+  ramping linearly from `separationForceMps` at zero distance to 0 at
+  the radius. Same-lane catchups (where `|Δz| < separationCoincidentLaneEps`)
+  use a deterministic id-tiebreak push (lower id pushes toward +Z, higher
+  toward -Z). The pushed z is clamped to `±(arena.width / 2 - lateralBoundMargin)`
+  so robots cannot leave the visible arena. The lateral push is z-only —
+  X is reserved for forward motion (R3).
 - **R5.** y is fixed at 0. The arena is a flat plane in v1.
 
 ### Gate-crossing rules
@@ -191,10 +200,51 @@ velocity(id, tick) = baseSpeedMps
 
 ```text
 pose.x_{tick+1} = pose.x_{tick} + velocity * dtSeconds
+pose.z_{tick+1} = clamp(pose.z_{tick} + pushZ(id, tick) * dtSeconds,
+                        -(arena.width/2 - lateralBoundMargin),
+                        +(arena.width/2 - lateralBoundMargin))
 ```
 
 with `dtSeconds = 1 / CONFIG.sim.tickRateHz = 1/60 ≈ 0.01667 s` (Sim Engine
 GDD §4).
+
+### Lateral separation (R4a)
+
+```text
+pushZ(id, tick) = Σ_{j ≠ id, active}  contribution(id, j)
+
+contribution(id, j):
+  dx   = pose[id].x - pose[j].x
+  dz   = pose[id].z - pose[j].z
+  dSq  = dx² + dz²
+  if dSq >= sepR²:                          → 0
+  d        = sqrt(dSq)
+  falloff  = 1 - d/sepR                     // 0 at radius → 1 at zero
+  if |dz| < laneEps:                        // same-lane tiebreak
+      sign = (id < j) ? +1 : -1
+      → sign * sepForce * falloff
+  else:
+      → (dz / d) * sepForce * falloff
+```
+
+**Variables:**
+
+| Symbol | Source | Range | Notes |
+|---|---|---|---|
+| `sepR` | `CONFIG.sim.sprintRace.separationRadius` | 1.0–3.0 | v1 default 1.6 |
+| `sepForce` | `CONFIG.sim.sprintRace.separationForceMps` | 2–10 m/s | v1 default 6.0 |
+| `laneEps` | `CONFIG.sim.sprintRace.separationCoincidentLaneEps` | 0.01–0.1 | v1 default 0.05 |
+| `lateralBoundMargin` | `CONFIG.sim.sprintRace.lateralBoundMargin` | 0–arena.width/2 | v1 default 0.5 |
+
+**Determinism notes:**
+
+- Iteration order is id-ascending for both motion and the inner neighbor
+  scan. Pose state read during the inner scan may be a mix of "this tick"
+  (j < id, already advanced) and "last tick" (j > id, not yet advanced)
+  values, but that mixture is byte-stable across runs.
+- `pushZ` uses no `rng()` calls — separation is a pure function of pose
+  state. The single rng call per active robot per tick (R2) is for
+  velocity jitter only.
 
 ### Race duration estimate
 

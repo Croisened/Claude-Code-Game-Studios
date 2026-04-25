@@ -122,6 +122,7 @@ export function createFollowLeaderCamera(
     lastTimeMs = t;
 
     const leaderX = findLeaderX();
+    const targetCameraX = leaderX + cfg.aheadOffsetX;
 
     // Lock Y / Z to the configured offset so the spectator angle stays
     // constant — only X tracks the leader.
@@ -129,16 +130,19 @@ export function createFollowLeaderCamera(
     camera.position.z = cfg.offsetZ;
 
     if (!initialised) {
-      // First-frame snap: jump to the leader to avoid a long ease-in
-      // from the original placeholder X (0).
-      camera.position.x = leaderX;
+      // First-frame snap: jump straight to the configured framing to
+      // avoid a long ease-in from the original placeholder X (0).
+      camera.position.x = targetCameraX;
       initialised = true;
     } else if (dt > 0) {
       const alpha = 1 - Math.exp(-cfg.lerpRatePerSecond * dt);
-      camera.position.x += (leaderX - camera.position.x) * alpha;
+      camera.position.x += (targetCameraX - camera.position.x) * alpha;
     }
 
-    lookAtTarget.set(camera.position.x, cfg.lookAtY, 0);
+    // lookAt sits at a fixed offset from the LEADER (not the camera) so
+    // both translate identically as the race progresses, holding the
+    // pitch and framing constant.
+    lookAtTarget.set(leaderX + cfg.lookAtAheadX, cfg.lookAtY, 0);
     camera.lookAt(lookAtTarget);
   }
 

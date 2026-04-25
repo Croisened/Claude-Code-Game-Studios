@@ -287,7 +287,7 @@ describe('createSprintRaceModule — motion invariants', () => {
     }
   });
 
-  it('lane (z) is constant across the run (no lane changes in v1)', () => {
+  it('lane (z) stays within the arena lateral bounds (separation push is clamped)', () => {
     const result = runSim({
       seed: 3,
       roster: makeRoster(10),
@@ -295,13 +295,43 @@ describe('createSprintRaceModule — motion invariants', () => {
       eventModule: createSprintRaceModule(),
     });
     const stride = 5;
+    const arena = smallArena();
+    const bound = arena.width / 2;
     for (let id = 0; id < 10; id++) {
-      const startZ = result.poseFrames[0].data[id * stride + 3];
       for (const frame of result.poseFrames) {
         const z = frame.data[id * stride + 3];
-        expect(z).toBe(startZ);
+        expect(z).toBeGreaterThanOrEqual(-bound);
+        expect(z).toBeLessThanOrEqual(bound);
       }
     }
+  });
+
+  it('separation force decongests same-lane catchups (z spreads from start)', () => {
+    // Two robots seeded directly behind each other in the same lane should
+    // end up on different sides within a few seconds of sim time.
+    const arena: Arena = Object.freeze({
+      id: 'sep-test',
+      type: 'sprint-race' as const,
+      length: 100,
+      width: 20,
+      startGrid: Object.freeze({ lanes: 1, rows: 2, laneSpacing: 2.0, rowSpacing: 1.5 }),
+      gates: Object.freeze([
+        Object.freeze({ name: 'finish', x: 100, cullToCount: 1 }),
+      ]),
+    });
+    const result = runSim({
+      seed: 11,
+      roster: makeRoster(2),
+      arena,
+      eventModule: createSprintRaceModule(),
+    });
+    const stride = 5;
+    // After ~120 ticks (~2 s), each robot's |z| should have grown well
+    // past the coincident-lane epsilon — i.e., the tiebreak nudge worked.
+    const sample = result.poseFrames[Math.min(120, result.poseFrames.length - 1)];
+    const z0 = sample.data[0 * stride + 3];
+    const z1 = sample.data[1 * stride + 3];
+    expect(Math.abs(z0 - z1)).toBeGreaterThan(0.5);
   });
 });
 

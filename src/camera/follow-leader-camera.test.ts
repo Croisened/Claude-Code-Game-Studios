@@ -77,7 +77,7 @@ function makeCamera(): THREE.PerspectiveCamera {
 // ---------------------------------------------------------------------------
 
 describe('createFollowLeaderCamera — leader selection', () => {
-  it('snaps to the leader-X on the first tracked frame', () => {
+  it('snaps to leader-X plus the ahead offset on the first tracked frame', () => {
     const renderer = makeFakeRenderer([5, 50, 30, 12]);
     const camera = makeCamera();
     const clock = makeScriptedClock();
@@ -93,7 +93,7 @@ describe('createFollowLeaderCamera — leader selection', () => {
     clock.step(0); // first tick consumes timestamp without lerp
     clock.step(16); // first tracked tick
 
-    expect(camera.position.x).toBeCloseTo(50, 4);
+    expect(camera.position.x).toBeCloseTo(50 + CONFIG.camera.follow.aheadOffsetX, 4);
     expect(camera.position.y).toBeCloseTo(CONFIG.camera.follow.offsetY, 4);
     expect(camera.position.z).toBeCloseTo(CONFIG.camera.follow.offsetZ, 4);
     follower.dispose();
@@ -114,7 +114,7 @@ describe('createFollowLeaderCamera — leader selection', () => {
     follower.start();
     clock.step(0);
     clock.step(16);
-    expect(camera.position.x).toBeCloseTo(100, 4);
+    expect(camera.position.x).toBeCloseTo(100 + CONFIG.camera.follow.aheadOffsetX, 4);
     follower.dispose();
   });
 });
@@ -136,23 +136,24 @@ describe('createFollowLeaderCamera — smoothing', () => {
       cancelRaf: clock.cancelRaf,
       now: clock.now,
     });
+    const aheadX = CONFIG.camera.follow.aheadOffsetX;
     follower.start();
     clock.step(0); // init
-    clock.step(16); // initial snap to leaderX = 0
-    expect(camera.position.x).toBeCloseTo(0, 4);
+    clock.step(16); // initial snap to leaderX + aheadX
+    expect(camera.position.x).toBeCloseTo(0 + aheadX, 4);
 
-    // Now leader teleports to x=100 and we step several frames; camera
-    // should ease toward 100 and never exceed it.
+    // Now leader teleports to x=100; camera target = 100 + aheadX.
     inst.root.position.x = 100;
+    const targetX = 100 + aheadX;
     let prev = camera.position.x;
     for (let i = 0; i < 30; i++) {
       clock.step(16);
       const cur = camera.position.x;
       expect(cur).toBeGreaterThanOrEqual(prev - 1e-9); // monotone non-decreasing
-      expect(cur).toBeLessThanOrEqual(100 + 1e-6); // no overshoot
+      expect(cur).toBeLessThanOrEqual(targetX + 1e-6); // no overshoot
       prev = cur;
     }
-    expect(camera.position.x).toBeGreaterThan(50);
+    expect(camera.position.x).toBeGreaterThan(50 + aheadX);
   });
 
   it('is frame-rate-independent: same total time → same end position', () => {
@@ -172,11 +173,11 @@ describe('createFollowLeaderCamera — smoothing', () => {
       });
       follower.start();
       clock.step(0);
-      // First post-init tick snaps to leaderX = 100 (no lerp). To exercise
-      // the lerp path, start the leader at 0 then snap, then move to 100.
+      // First post-init tick snaps to leaderX + aheadOffsetX (no lerp). To
+      // exercise the lerp path, start the leader at 0, snap, then move.
       const inst = renderer.getAllInstances()[0];
       inst.root.position.x = 0;
-      clock.step(stepMs); // snap to 0
+      clock.step(stepMs); // snap to (0 + aheadOffsetX)
       inst.root.position.x = 100;
       let elapsed = 0;
       while (elapsed < totalMs) {
@@ -195,7 +196,7 @@ describe('createFollowLeaderCamera — smoothing', () => {
 });
 
 describe('createFollowLeaderCamera — lookAt', () => {
-  it('points the camera at (leaderX, lookAtY, 0)', () => {
+  it('points the camera at (leaderX + lookAtAheadX, lookAtY, 0)', () => {
     const renderer = makeFakeRenderer([100]);
     const camera = makeCamera();
     const clock = makeScriptedClock();
@@ -209,13 +210,46 @@ describe('createFollowLeaderCamera — lookAt', () => {
     follower.start();
     clock.step(0);
     clock.step(16);
-    // After lookAt, the camera's local -Z should point toward the target.
-    // Easier: compute the target direction and compare to camera's forward.
-    const expectedTarget = new THREE.Vector3(100, CONFIG.camera.follow.lookAtY, 0);
+    const expectedTarget = new THREE.Vector3(
+      100 + CONFIG.camera.follow.lookAtAheadX,
+      CONFIG.camera.follow.lookAtY,
+      0,
+    );
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
     const toTarget = expectedTarget.clone().sub(camera.position).normalize();
-    // Dot ≈ 1 means directions agree.
     expect(forward.dot(toTarget)).toBeGreaterThan(0.9999);
+    follower.dispose();
+  });
+
+  it('translates lookAt with the leader (framing constant as race progresses)', () => {
+    const renderer = makeFakeRenderer([0]);
+    const inst = renderer.getAllInstances()[0];
+    const camera = makeCamera();
+    const clock = makeScriptedClock();
+    const follower = createFollowLeaderCamera({
+      camera,
+      renderer,
+      raf: clock.raf,
+      cancelRaf: clock.cancelRaf,
+      now: clock.now,
+    });
+    follower.start();
+    clock.step(0);
+    clock.step(16);
+
+    function captureForward(): THREE.Vector3 {
+      return new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+    }
+    const fwdEarly = captureForward();
+
+    // Move leader, drain enough frames for the camera lerp to converge.
+    inst.root.position.x = 200;
+    for (let i = 0; i < 240; i++) clock.step(16);
+    const fwdLate = captureForward();
+
+    // The forward vectors should be near-identical because both camera
+    // and lookAt translated by the same dx.
+    expect(fwdEarly.dot(fwdLate)).toBeGreaterThan(0.9999);
     follower.dispose();
   });
 });

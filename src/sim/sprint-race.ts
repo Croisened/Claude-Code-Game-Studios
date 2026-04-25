@@ -51,6 +51,12 @@ function initState(arena: Arena, rosterSize: number): SprintRaceState {
 function advanceMotion(ctx: TickContext): void {
   const k = CONFIG.sim.sprintRace;
   const dt = ctx.dtSeconds;
+  const sepR = k.separationRadius;
+  const sepRSq = sepR * sepR;
+  const sepForce = k.separationForceMps;
+  const laneEps = k.separationCoincidentLaneEps;
+  const zBound = ctx.arena.width / 2 - k.lateralBoundMargin;
+
   for (let id = 0; id < ctx.poses.length; id++) {
     const pose = ctx.poses[id];
     if (!pose.active) continue;
@@ -59,7 +65,37 @@ function advanceMotion(ctx: TickContext): void {
     // rng() called once per active robot per tick — see module header.
     const jitter = 1 + (ctx.rng() * 2 - 1) * stat.chaos * k.chaosScale;
     const velocity = k.baseSpeedMps * stat.speed * cautionFactor * jitter;
+
+    // Lateral separation push. Iterates id-sorted to preserve the engine's
+    // determinism contract — pose state read here may be a mix of "this
+    // tick" (j < id) and "last tick" (j > id) values, but the choice is
+    // byte-stable across runs.
+    let pushZ = 0;
+    for (let j = 0; j < ctx.poses.length; j++) {
+      if (j === id) continue;
+      const other = ctx.poses[j];
+      if (!other.active) continue;
+      const dx = pose.x - other.x;
+      const dz = pose.z - other.z;
+      const distSq = dx * dx + dz * dz;
+      if (distSq >= sepRSq) continue;
+      const dist = Math.sqrt(distSq);
+      const falloff = 1 - dist / sepR; // 0 at radius → 1 at zero distance
+      if (Math.abs(dz) < laneEps) {
+        // Same-lane catchup: zero radial Z component would let them phase
+        // through. Tie-break by id so the choice is deterministic.
+        pushZ += (id < j ? 1 : -1) * sepForce * falloff;
+      } else {
+        // Radial push, lateral component only — the X axis is reserved
+        // for forward motion so the monotonic-X invariant holds.
+        pushZ += (dz / dist) * sepForce * falloff;
+      }
+    }
+
     pose.x += velocity * dt;
+    pose.z += pushZ * dt;
+    if (pose.z > zBound) pose.z = zBound;
+    else if (pose.z < -zBound) pose.z = -zBound;
   }
 }
 

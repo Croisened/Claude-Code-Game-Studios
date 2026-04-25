@@ -50,6 +50,39 @@ export const CONFIG = {
        * is `±stat.chaos * chaosScale`. Range 0–0.5.
        */
       chaosScale: 0.15,
+
+      /**
+       * Boids-style lateral separation. Each tick every active robot is
+       * pushed along world Z (perpendicular to motion) away from active
+       * neighbors that fall inside `separationRadius`. Force magnitude
+       * falls off linearly from `separationForceMps` at distance 0 to
+       * 0 at the radius.
+       *
+       * Range guidance: radius 1.0–3.0 (units), force 2–10 (m/s).
+       * Larger radius spreads the pack; larger force separates faster.
+       *
+       * Determinism: the rule reads pose state in id-ascending order —
+       * the same order the engine iterates motion in — so output is
+       * byte-identical for a fixed seed. No `rng()` calls are made
+       * inside the separation rule.
+       */
+      separationRadius: 1.6,
+      separationForceMps: 6.0,
+      /**
+       * |Δz| threshold below which two robots are treated as "in the
+       * same lane" for separation purposes. The radial push goes to
+       * zero as `dz / dist → 0`, so coincident-lane robots would phase
+       * through each other; this threshold triggers a deterministic
+       * id-based tiebreak (smaller id pushes toward +Z, larger toward
+       * -Z) that nudges them onto different sides within a few ticks.
+       */
+      separationCoincidentLaneEps: 0.05,
+      /**
+       * Lateral safety margin from the arena's z-bounds (`±width/2`).
+       * Prevents the separation push from launching robots over the
+       * edge of the visible arena.
+       */
+      lateralBoundMargin: 0.5,
     },
 
     traitToStat: {
@@ -89,6 +122,13 @@ export const CONFIG = {
      * as performance fallback. Range 10–85.
      */
     robotCount: 85,
+
+    /**
+     * Uniform scale applied to every cloned robot instance at assembly
+     * time. The GLB is authored at unit scale; sim positions and arena
+     * geometry are unaffected (scale is purely visual). Range 0.5–4.
+     */
+    robotScale: 2,
 
     /** Path to the rigged robot GLB (geometry + run clip source). */
     robotGlbPath: 'assets/art/characters/robot/robot_run.glb',
@@ -134,18 +174,28 @@ export const CONFIG = {
 
   camera: {
     /**
-     * Follow-Leader mode parameters (S6-03 spike). The camera tracks the
-     * highest-X active robot, keeping a fixed offset and lookAt height
-     * derived from the Sprint 4 placeholder camera — same view, just
-     * sliding along the arena.
+     * Follow-Leader mode parameters (S6-03 spike). The camera sits AHEAD
+     * of the leader (along +X) and looks BACK at a point trailing the
+     * leader, tilted back so the field is visible behind. As the leader
+     * advances, both the camera and the lookAt translate by the same
+     * dx, holding the framing constant.
      */
     follow: {
+      /** Camera offset ahead of leader along +X. Positive = camera leads. */
+      aheadOffsetX: 10,
       /** Camera height above ground plane. */
-      offsetY: 14,
+      offsetY: 18,
       /** Camera offset along world +Z (the spectator side of the arena). */
-      offsetZ: 28,
+      offsetZ: 16,
+      /**
+       * lookAt offset ahead of leader along +X. Negative = lookAt sits
+       * behind the leader so the leader and trailing field both frame
+       * naturally. Combined with the ahead camera position, this gives
+       * a tilted-back, looking-over-the-field framing.
+       */
+      lookAtAheadX: -12,
       /** lookAt height above ground plane. */
-      lookAtY: 1,
+      lookAtY: 0.5,
       /**
        * Position-tracking smoothing rate, in 1/seconds. Higher = snappier,
        * lower = floatier. The leader's X position is dt-independent

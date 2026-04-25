@@ -312,6 +312,11 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
       // and crossFadeTo() calls codebase-wide; the renderer hands out
       // mixer + clips and stays out of the timing business.
 
+      // Visual scale is applied once at assembly time. Sim positions and
+      // arena geometry are unaffected — scale is purely a presentation
+      // concern.
+      root.scale.setScalar(CONFIG.renderer.robotScale);
+
       if (placePlaceholderGrid) placeOnGrid(root, id);
 
       scene.add(root);
