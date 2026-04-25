@@ -37,7 +37,7 @@ is unused in v1).
 | 2 | Seedable PRNG | Core | MVP | Approved | design/gdd/seedable-prng.md | — |
 | 3 | Build / Deploy Pipeline | Core | MVP | Approved | design/gdd/build-deploy-pipeline.md | — |
 | 4 | 85-Instance Skinned Mesh Renderer | Rendering | MVP | Approved | design/gdd/85-instance-renderer.md | Robot Roster Loader |
-| 5 | Animation State Switcher | Rendering | MVP | Not Started | — | 85-Instance Skinned Mesh Renderer, Sim Engine Core |
+| 5 | Animation State Switcher | Rendering | MVP | Approved | design/gdd/animation-state-switcher.md | 85-Instance Skinned Mesh Renderer, Sim Engine Core |
 | 6 | Trait → Stat Derivation | Core | MVP | Not Started | — | Config Module |
 | 7 | Robot Roster Loader | Core | MVP | Not Started | — | Config Module |
 | 8 | Arena Loader + Sprint Arena JSON | Core | MVP | Not Started | — | Config Module |
