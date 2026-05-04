@@ -11,3 +11,12 @@
    `producer` agent coordinates the propagation.
 5. **No Unilateral Cross-Domain Changes**: An agent must never modify files
    outside its designated directories without explicit delegation.
+6. **Sprint Plan Live-Status Convention**: Each sprint plan's task table
+   includes a **Status** column with values `Pending` → `In Progress` →
+   `Done (<commit hash>)`. The plan is updated as work lands so it reads
+   as a live status doc mid-sprint, not a static intent doc. When picking
+   up a sprint mid-stream, scan `git log --oneline --grep="^SN-"` first
+   and reconcile against the plan's task table before starting work — this
+   avoids the redo pattern documented in Sprint 5 retro AI #1. The
+   canonical example is `production/sprints/sprint-06.md`. Codified by
+   Sprint 5 retro AI #2.

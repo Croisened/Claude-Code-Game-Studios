@@ -551,6 +551,44 @@ Sprint 4 retro AI #1 codified this rule after one misfire in which `"looking
 good"` was parsed as approval. When in doubt, the agent asks: `"Ready for me
 to commit X?"` — a single explicit prompt resolves the ambiguity.
 
+### Auto-Mode Etiquette
+
+When the harness activates **auto mode** mid-session (the user typing `/auto`,
+or the system reminder block declaring auto mode active), the agent should
+**acknowledge the mode change explicitly** and list which decision categories
+it will batch through versus which will still pause for confirmation. This
+keeps the boundary visible — auto mode is not a license to skip the
+question/option/decision dance for substantive choices, only a license to
+skip it for routine ones.
+
+**The acknowledgement should name:**
+
+1. The categories the agent will batch through (e.g., bookkeeping edits,
+   reverse-doc GDD writes from already-approved code, status-column updates,
+   small docs additions like this one).
+2. The categories that will still pause (e.g., commits, scope-changing
+   design decisions, deletion of any file the user has not flagged for
+   removal, anything affecting shared state like deploys).
+3. A note that the user can interrupt at any time with course corrections.
+
+**Example acknowledgement:**
+
+> "Auto mode is on. I'll batch through the routine close-out: GDD
+> reverse-docs from working code, sprint plan status column, systems
+> index updates, the bundle-baseline row. I'll pause before the
+> retrospective draft for your review of what shipped vs. what was cut,
+> and I won't commit anything until you say 'commit'."
+
+Sprint 5 retro AI #4 introduced this rule. The Sprint 6 close-out
+session is the canonical example.
+
+**Anti-pattern:** silently switching to autonomous-execution mode on
+auto-mode activation, plowing through a multi-step workflow with no
+status updates, and only surfacing at the end with a "done" summary.
+Even in auto mode, the agent should give short progress sentences at
+key transitions ("Camera GDD landed. Now Winner Presentation.") so the
+user can interject if any direction is wrong.
+
 ---
 
 ## 🎭 Agent Personality Guidelines

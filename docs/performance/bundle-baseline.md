@@ -80,6 +80,7 @@ few kB. Treat Three.js as a fixed cost; budget around it.
 |--------|------|-----------------|------------|-------|
 | Sprint 4 | 2026-04-24 | 158.92 kB | — | First post-pivot baseline. Sneak Peek route added; renderer + animation system included in Landing bundle. |
 | Sprint 5 | 2026-04-24 | 158.93 kB | +0.01 kB | Sim engine, sprint race module, harness, two GDDs added under `src/sim/` and `tools/sim/`. None of it is reachable from Landing — the bundle is unchanged within rounding. |
+| Sprint 6 | 2026-05-04 | 173.60 kB | +14.67 kB | Sim Driver + Sim ↔ Renderer Bridge + four-mode Camera System + maze arena (Arena-02) + maze-walls / finish-tree visuals + WinnerCard UI + cyberpunk landing/peek styling. First sprint to materially move the bundle since the pivot. Within the 200 kB defensibility threshold (~26 kB headroom remaining). The 500 kB raw-chunk warning still applies; not yet acted on. |
 
 Future sprints append a row when the bundle is re-measured.
 

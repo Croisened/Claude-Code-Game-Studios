@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Created**: 2026-04-24
-> **Last Updated**: 2026-04-24
+> **Last Updated**: 2026-05-04
 > **Source Concept**: design/gdd/game-concept.md
 
 ---
@@ -44,9 +44,9 @@ is unused in v1).
 | 9 | Sim Engine Core | Gameplay | MVP | Approved | design/gdd/sim-engine-core.md | Config Module, Seedable PRNG, Trait → Stat Derivation, Robot Roster Loader |
 | 10 | Sprint Race Event Module | Gameplay | MVP | Approved | design/gdd/sprint-race-event-module.md | Sim Engine Core, Arena Loader |
 | 11 | Sim Driver | Gameplay | MVP | Approved | design/gdd/sim-driver.md | Sim Engine Core, Config Module |
-| 12 | Camera System | Presentation | MVP | Not Started | — | 85-Instance Skinned Mesh Renderer, Sim Driver |
-| 13 | Winner VFX | Presentation | MVP | Not Started | — | Sim Driver, 85-Instance Skinned Mesh Renderer |
-| 14 | Preact App Shell | UI | MVP | Not Started | — | Sim Driver, Camera System, 85-Instance Skinned Mesh Renderer, Winner VFX |
+| 12 | Camera System | Presentation | MVP | Approved | design/gdd/camera-system.md | 85-Instance Skinned Mesh Renderer, Sim Driver |
+| 13 | Winner Presentation | Presentation | MVP | Approved | design/gdd/winner-presentation.md | Sim Driver, 85-Instance Skinned Mesh Renderer, Camera System, Robot Roster Loader |
+| 14 | Preact App Shell | UI | MVP | Approved | design/gdd/preact-app-shell.md | Sim Driver, Camera System, 85-Instance Skinned Mesh Renderer, Winner Presentation |
 
 > Systems 4, 5, 8, 12, 13, 14 were explicit in the spec. Systems 1, 2, 3, 6, 7, 9, 10
 > are implicit — required for the explicit systems to function, enumerated during
@@ -65,7 +65,7 @@ is unused in v1).
 | **Core** | Foundation systems everything depends on | Config, PRNG, Build/Deploy, Trait→Stat, Roster Loader, Arena Loader |
 | **Gameplay** | The systems that drive the sim and bridge it to consumers | Sim Engine Core, Sprint Race Event Module, Sim Driver |
 | **Rendering** | Visual presentation of sim state | 85-Instance Renderer, Animation State Switcher |
-| **Presentation** | Viewer-facing feedback and control | Camera System, Winner VFX |
+| **Presentation** | Viewer-facing feedback and control | Camera System, Winner Presentation |
 | **UI** | Shell and interactive controls | Preact App Shell |
 
 Categories not used in v1: **Progression, Economy, Persistence, Audio, Narrative, Meta**.
@@ -117,7 +117,7 @@ or "not yet."
 ### Presentation Layer (depends on features + rendering)
 
 1. **Camera System** — depends on: 85-Instance Renderer, Sim Driver. Three modes user-selectable via toggle: **Follow Leader** (auto-cuts to current first-place), **Fixed Cameras** (several authored presets per arena), **Follow ID** (viewer enters any robot ID and camera tracks that robot through the entire event including death/ragdoll). Reads `getPose` per frame from the Sim Driver and subscribes to `elimination` / `finish` events for target switches.
-2. **Winner VFX** — depends on: Sim Driver (winner via `simEnd` event + `finishOrder`), 85-Instance Renderer (target). Particle burst + spotlight + slow camera orbit on the winning robot at finish. No custom victory animation in v1 per locked decision — winner plays `idle`.
+2. **Winner Presentation** — depends on: Sim Driver (winner via `simEnd` event), 85-Instance Renderer (target), Camera System (Winner Camera mode), Robot Roster Loader (name + traits for the WinnerCard). Originally planned as "Winner VFX" with rim/emissive/particle work; what shipped is camera composition (45° framing of winner + arena landmark) + cyberpunk WinnerCard panel + face-the-camera rotation override on the winning robot. Literal VFX (rim/emissive/particles) is deferred to v1.x polish — see Sprint 6 retrospective for the scope decision.
 
 ### UI Layer (depends on everything)
 
@@ -189,7 +189,7 @@ is doing.
 | **85-Instance Skinned Mesh Renderer** | Technical | Three.js has no native `InstancedSkinnedMesh`. 85 independently-animated skinned meshes may not hit 60fps with full skeleton updates every frame. If this fails, the whole project is unshippable at the current scope. | **Pulled forward to design order position 4.** Build a standalone prototype early in Sprint 4 against fake position data. If performance is unworkable, scope fallbacks in order: (a) reduce to 40 robots, (b) skip skeleton updates for off-screen robots, (c) bake animations to texture (VAT), (d) drop to non-skinned instanced meshes with rigid poses. |
 | **Sim Engine Core** | Technical | Determinism requires every stochastic decision to route through the seeded PRNG. A single accidental `Math.random()` call breaks reproducibility, which matters less in v1 (no replay) but will matter when persistence returns in v1.1. Fixed-timestep vs. `requestAnimationFrame` drift is subtle. | Lint rule or code review checklist forbidding `Math.random`. Fixed internal 60Hz timestep, independent of render frame rate. Write determinism tests (same seed → same event outcome) from the start, even if we don't use replay files yet. |
 | **Config Module** | Design | Bottleneck: everyone depends on it. If the shape is wrong, everyone refactors. | Spend 30–60 min in Sprint 4 actually thinking about the config shape (nested by subsystem? flat? TypeScript interface?) before writing it. Make it read-only at runtime. |
-| **Camera System: Follow ID** | Design | "Follow my robot even when it's off a cliff" is a great viewer-loyalty feature but has edge cases: robot is eliminated before user enters the ID, robot ID doesn't exist (invalid input), robot despawns off the world. | Design doc explicitly enumerates these. Fallback: if the tracked robot disappears or is invalid, camera gracefully transitions to Follow Leader with a small on-screen message. |
+| **Camera System: Follow ID** | Design | "Follow my robot even when it's off a cliff" is a great viewer-loyalty feature but has edge cases: robot is eliminated before user enters the ID, robot ID doesn't exist (invalid input), robot despawns off the world. | **Resolved at Sprint 6 close.** Shipped as Robot Shoulder camera (`src/camera/robot-shoulder-camera.ts`). Out-of-range ids clear the input + reset to arena cam (App Shell GDD §3 R16). Eliminated robots have frozen poses tracked in place — intentional "my horse died here" framing. See Camera System GDD §3 R14–R19. |
 
 ---
 
@@ -199,10 +199,10 @@ is doing.
 |--------|-------|
 | Total systems identified (v1) | 14 |
 | Deferred systems (v1.1+) | 14 |
-| Design docs started | 11 |
-| Design docs reviewed | 11 |
-| Design docs approved | 11 |
-| MVP systems designed | 11 / 14 |
+| Design docs started | 14 |
+| Design docs reviewed | 14 |
+| Design docs approved | 14 |
+| MVP systems designed | 14 / 14 |
 
 ---
 
