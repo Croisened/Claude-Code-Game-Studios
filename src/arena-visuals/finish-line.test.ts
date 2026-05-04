@@ -65,13 +65,24 @@ describe('createFinishLine', () => {
     expect(mat.map).toBe(tex);
   });
 
-  it('throws when arena has no gates', () => {
+  it('uses arena.length as the finish when there are no gates (gauntlet)', () => {
     const arena = Object.freeze({
       ...makeArena(),
+      length: 200,
+      gates: Object.freeze([]),
+    }) as Arena;
+    const mesh = createFinishLine(arena, { textureFactory: stubTexture });
+    expect(mesh.position.x).toBe(200);
+  });
+
+  it('throws when there are no gates AND arena.length <= 0', () => {
+    const arena = Object.freeze({
+      ...makeArena(),
+      length: 0,
       gates: Object.freeze([]),
     }) as Arena;
     expect(() => createFinishLine(arena, { textureFactory: stubTexture })).toThrow(
-      /no gates/,
+      /no gates and length/,
     );
   });
 

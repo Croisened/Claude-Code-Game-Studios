@@ -31,9 +31,12 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadRoster } from '../../src/sim/robot-roster';
-import { loadArena } from '../../src/sim/arena';
-import { runSim, type SimResult } from '../../src/sim/engine';
+import { loadArena, type Arena } from '../../src/sim/arena';
+import { runSim, type EventModule, type SimResult } from '../../src/sim/engine';
 import { createSprintRaceModule } from '../../src/sim/sprint-race';
+import { createMazeRaceModule } from '../../src/sim/maze-race';
+import { generateMazeLayout } from '../../src/sim/maze';
+import { createObstacleGauntletModule } from '../../src/sim/obstacle-gauntlet';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
@@ -71,6 +74,35 @@ export interface EventOutput {
 }
 
 /**
+ * Pick the right `EventModule` for the loaded arena. Mirrors
+ * `buildArenaSetup` in `src/app.tsx` — the harness runs the same
+ * deterministic sim path the browser does.
+ *
+ * Maze-race needs a layout generated from the same seed the sim will
+ * consume; this is computed here so the harness produces a `SimResult`
+ * byte-identical to the browser's for the same `(seed, arena)` pair.
+ */
+function buildEventModule(arena: Arena, seed: number): EventModule {
+  switch (arena.type) {
+    case 'sprint-race':
+      return createSprintRaceModule();
+    case 'maze-race': {
+      if (!arena.mazeConfig) {
+        throw new Error('maze-race arena loaded without mazeConfig — loader bug');
+      }
+      const layout = generateMazeLayout({ config: arena.mazeConfig, seed });
+      return createMazeRaceModule({ layout });
+    }
+    case 'obstacle-gauntlet':
+      return createObstacleGauntletModule();
+    default: {
+      const _exhaustive: never = arena.type;
+      throw new Error(`unknown arena.type: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+/**
  * Pure (modulo loader I/O) function — calls into the loaders with
  * pre-parsed JSON, runs one race, returns a JSON-ready output object.
  * Test seam for `tools/sim/run-event.test.ts`.
@@ -89,7 +121,7 @@ export async function buildEventOutput(
     seed: opts.seed,
     roster,
     arena,
-    eventModule: createSprintRaceModule(),
+    eventModule: buildEventModule(arena, opts.seed),
     recordPoseFrames: opts.includePoseFrames,
   });
 

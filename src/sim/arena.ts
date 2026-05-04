@@ -15,7 +15,7 @@
 
 import { CONFIG } from '@/config';
 
-const SUPPORTED_ARENA_TYPES = ['sprint-race', 'maze-race'] as const;
+const SUPPORTED_ARENA_TYPES = ['sprint-race', 'maze-race', 'obstacle-gauntlet'] as const;
 const REQUIRED_TOP_LEVEL_FIELDS_SPRINT = [
   'id',
   'type',
@@ -31,6 +31,14 @@ const REQUIRED_TOP_LEVEL_FIELDS_MAZE = [
   'width',
   'mazeConfig',
 ] as const;
+const REQUIRED_TOP_LEVEL_FIELDS_GAUNTLET = [
+  'id',
+  'type',
+  'length',
+  'width',
+  'startGrid',
+  'gauntletConfig',
+] as const;
 const REQUIRED_GATE_FIELDS = ['name', 'x', 'cullToCount'] as const;
 const REQUIRED_START_GRID_FIELDS = [
   'lanes',
@@ -45,6 +53,24 @@ const REQUIRED_MAZE_CONFIG_FIELDS = [
   'entranceCount',
   'finishCol',
   'finishRow',
+] as const;
+const REQUIRED_GAUNTLET_CONFIG_FIELDS = [
+  'pitZones',
+  'hammers',
+  'bridge',
+] as const;
+const REQUIRED_PIT_ZONE_FIELDS = ['xStart', 'xEnd'] as const;
+const REQUIRED_HAMMER_FIELDS = [
+  'x',
+  'killRadius',
+  'cycleTicks',
+  'downStartTick',
+  'downEndTick',
+] as const;
+const REQUIRED_BRIDGE_FIELDS = [
+  'xStart',
+  'xEnd',
+  'crumbleSpeedMps',
 ] as const;
 const MIN_GATE_COUNT = 2;
 const MIN_ROSTER_COVERAGE = 85;
@@ -74,6 +100,66 @@ export interface MazeArenaConfig {
 }
 
 /**
+ * A pit-trap region of the gauntlet course. Robots whose pose.x is in
+ * `[xStart, xEnd]` roll once per tick to fall (caution-modulated). The
+ * sim treats the zone as a full-width band — there's no `width` field
+ * because v1 gauntlet's lanes are too narrow for "step around" play.
+ */
+export interface PitZone {
+  readonly xStart: number;
+  readonly xEnd: number;
+}
+
+/**
+ * A swinging hammer trap. The hammer is a single-x kill point that
+ * cycles between "up" (safe) and "down" (deadly) based on the current
+ * sim tick. Determinism: the renderer reads the same `tick *
+ * cycleTicks` math, so visual hammer position is sim-authoritative.
+ *
+ * Phase math: `phase = tick % cycleTicks`. Hammer is "down" when
+ * `phase ∈ [downStartTick, downEndTick)` (half-open interval). The
+ * window can wrap if `downEndTick > cycleTicks` (interpretation: down
+ * window spans the cycle boundary), though arena-03 v1 keeps every
+ * window inside one cycle.
+ *
+ * `killRadius` is metres along the +X axis. A robot is hit if
+ * `|pose.x - hammer.x| < killRadius` AND the hammer is currently
+ * down.
+ */
+export interface HammerSpec {
+  readonly x: number;
+  readonly killRadius: number;
+  readonly cycleTicks: number;
+  readonly downStartTick: number;
+  readonly downEndTick: number;
+}
+
+/**
+ * The crumbling-bridge final stage. The bridge spans `[xStart, xEnd]`
+ * along +X. Once the FIRST active robot enters the bridge, a "crumble
+ * line" spawns at `xStart` and advances forward at `crumbleSpeedMps`
+ * m/sec. Any robot whose pose.x is below the crumble line AND whose
+ * pose.x is within `[xStart, xEnd]` (still on the bridge) is
+ * eliminated with `bridge_fell`. Robots past `xEnd` are clear.
+ */
+export interface BridgeSpec {
+  readonly xStart: number;
+  readonly xEnd: number;
+  readonly crumbleSpeedMps: number;
+}
+
+/**
+ * Arena-03 (`obstacle-gauntlet`) trap definitions. Per game-concept
+ * §3, the gauntlet ships with three trap types in fixed order along
+ * the course: pits → hammers → bridge → finish.
+ */
+export interface GauntletConfig {
+  readonly pitZones: readonly PitZone[];
+  readonly hammers: readonly HammerSpec[];
+  readonly bridge: BridgeSpec;
+}
+
+/**
  * Arena variants:
  * - `sprint-race` arenas have a `startGrid` and a non-empty `gates` array.
  *   `mazeConfig` is undefined.
@@ -96,6 +182,7 @@ export interface Arena {
   readonly startGrid: StartGrid;
   readonly gates: readonly Gate[];
   readonly mazeConfig?: MazeArenaConfig;
+  readonly gauntletConfig?: GauntletConfig;
   readonly maxTicks?: number;
 }
 
@@ -336,6 +423,148 @@ function validateMazeConfig(raw: unknown): MazeArenaConfig {
   });
 }
 
+function ensureNonNegativeInteger(value: unknown, path: string): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 0
+  ) {
+    throw new Error(
+      `Arena ${path} must be a non-negative integer, got ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
+}
+
+function validatePitZone(raw: unknown, index: number, courseLength: number): PitZone {
+  if (!isRecord(raw)) {
+    throw new Error(`Arena pitZones[${index}] must be an object, got ${typeof raw}`);
+  }
+  for (const field of REQUIRED_PIT_ZONE_FIELDS) {
+    if (!(field in raw)) {
+      throw new Error(`Arena pitZones[${index}] missing required field ${field}`);
+    }
+  }
+  const xStart = ensureFiniteNumber(raw.xStart, `pitZones[${index}].xStart`);
+  const xEnd = ensureFiniteNumber(raw.xEnd, `pitZones[${index}].xEnd`);
+  if (xStart < 0 || xEnd <= xStart || xEnd > courseLength) {
+    throw new Error(
+      `Arena pitZones[${index}] invalid: 0 <= xStart < xEnd <= length (${courseLength}); got [${xStart}, ${xEnd}]`,
+    );
+  }
+  return Object.freeze({ xStart, xEnd });
+}
+
+function validateHammer(raw: unknown, index: number, courseLength: number): HammerSpec {
+  if (!isRecord(raw)) {
+    throw new Error(`Arena hammers[${index}] must be an object, got ${typeof raw}`);
+  }
+  for (const field of REQUIRED_HAMMER_FIELDS) {
+    if (!(field in raw)) {
+      throw new Error(`Arena hammers[${index}] missing required field ${field}`);
+    }
+  }
+  const x = ensureFiniteNumber(raw.x, `hammers[${index}].x`);
+  if (x < 0 || x > courseLength) {
+    throw new Error(
+      `Arena hammers[${index}].x (${x}) must be in [0, ${courseLength}]`,
+    );
+  }
+  const killRadius = ensurePositive(
+    ensureFiniteNumber(raw.killRadius, `hammers[${index}].killRadius`),
+    `hammers[${index}].killRadius`,
+  );
+  const cycleTicks = ensurePositiveInteger(
+    raw.cycleTicks,
+    `hammers[${index}].cycleTicks`,
+  );
+  const downStartTick = ensureNonNegativeInteger(
+    raw.downStartTick,
+    `hammers[${index}].downStartTick`,
+  );
+  const downEndTick = ensurePositiveInteger(
+    raw.downEndTick,
+    `hammers[${index}].downEndTick`,
+  );
+  if (downStartTick >= downEndTick) {
+    throw new Error(
+      `Arena hammers[${index}] downStartTick (${downStartTick}) must be < downEndTick (${downEndTick})`,
+    );
+  }
+  if (downEndTick > cycleTicks) {
+    throw new Error(
+      `Arena hammers[${index}] downEndTick (${downEndTick}) must be <= cycleTicks (${cycleTicks}) — wrapping windows not supported in v1`,
+    );
+  }
+  return Object.freeze({ x, killRadius, cycleTicks, downStartTick, downEndTick });
+}
+
+function validateBridge(raw: unknown, courseLength: number): BridgeSpec {
+  if (!isRecord(raw)) {
+    throw new Error(`Arena gauntletConfig.bridge must be an object, got ${typeof raw}`);
+  }
+  for (const field of REQUIRED_BRIDGE_FIELDS) {
+    if (!(field in raw)) {
+      throw new Error(`Arena gauntletConfig.bridge missing required field ${field}`);
+    }
+  }
+  const xStart = ensureFiniteNumber(raw.xStart, 'bridge.xStart');
+  const xEnd = ensureFiniteNumber(raw.xEnd, 'bridge.xEnd');
+  if (xStart < 0 || xEnd <= xStart || xEnd > courseLength) {
+    throw new Error(
+      `Arena bridge invalid: 0 <= xStart < xEnd <= length (${courseLength}); got [${xStart}, ${xEnd}]`,
+    );
+  }
+  const crumbleSpeedMps = ensurePositive(
+    ensureFiniteNumber(raw.crumbleSpeedMps, 'bridge.crumbleSpeedMps'),
+    'bridge.crumbleSpeedMps',
+  );
+  return Object.freeze({ xStart, xEnd, crumbleSpeedMps });
+}
+
+function validateGauntletConfig(raw: unknown, courseLength: number): GauntletConfig {
+  if (!isRecord(raw)) {
+    throw new Error(`Arena field gauntletConfig must be an object, got ${typeof raw}`);
+  }
+  for (const field of REQUIRED_GAUNTLET_CONFIG_FIELDS) {
+    if (!(field in raw)) {
+      throw new Error(`Arena missing required field gauntletConfig.${field}`);
+    }
+  }
+  if (!Array.isArray(raw.pitZones)) {
+    throw new Error('Arena gauntletConfig.pitZones must be an array');
+  }
+  if (!Array.isArray(raw.hammers)) {
+    throw new Error('Arena gauntletConfig.hammers must be an array');
+  }
+  const pitZones = Object.freeze(
+    raw.pitZones.map((p, i) => validatePitZone(p, i, courseLength)),
+  );
+  const hammers = Object.freeze(
+    raw.hammers.map((h, i) => validateHammer(h, i, courseLength)),
+  );
+  const bridge = validateBridge(raw.bridge, courseLength);
+  // Game-concept §3 ordering: pits → hammers → bridge. Enforce by
+  // checking that all pit ends precede the first hammer x, all hammer x
+  // values precede bridge.xStart, and bridge.xEnd <= length.
+  const lastPitEnd = pitZones.length > 0
+    ? pitZones[pitZones.length - 1].xEnd
+    : 0;
+  const firstHammerX = hammers.length > 0 ? hammers[0].x : courseLength;
+  if (lastPitEnd > firstHammerX) {
+    throw new Error(
+      `Arena gauntletConfig: last pit zone ends (${lastPitEnd}) after first hammer (${firstHammerX}); pits must precede hammers`,
+    );
+  }
+  const lastHammerX = hammers.length > 0 ? hammers[hammers.length - 1].x : 0;
+  if (lastHammerX > bridge.xStart) {
+    throw new Error(
+      `Arena gauntletConfig: last hammer (${lastHammerX}) is past bridge start (${bridge.xStart}); hammers must precede bridge`,
+    );
+  }
+  return Object.freeze({ pitZones, hammers, bridge });
+}
+
 function buildArena(payload: Record<string, unknown>): Arena {
   if (!('type' in payload)) {
     throw new Error('Arena missing required field type');
@@ -348,7 +577,11 @@ function buildArena(payload: Record<string, unknown>): Arena {
   const type: ArenaType = payload.type;
 
   const required =
-    type === 'maze-race' ? REQUIRED_TOP_LEVEL_FIELDS_MAZE : REQUIRED_TOP_LEVEL_FIELDS_SPRINT;
+    type === 'maze-race'
+      ? REQUIRED_TOP_LEVEL_FIELDS_MAZE
+      : type === 'obstacle-gauntlet'
+        ? REQUIRED_TOP_LEVEL_FIELDS_GAUNTLET
+        : REQUIRED_TOP_LEVEL_FIELDS_SPRINT;
   for (const field of required) {
     if (!(field in payload)) {
       throw new Error(`Arena missing required field ${field}`);
@@ -396,6 +629,26 @@ function buildArena(payload: Record<string, unknown>): Arena {
       startGrid,
       gates,
       mazeConfig,
+      maxTicks,
+    });
+  }
+
+  if (type === 'obstacle-gauntlet') {
+    const startGrid = validateStartGrid(payload.startGrid, width);
+    const gauntletConfig = validateGauntletConfig(payload.gauntletConfig, length);
+    // Gauntlets don't use gates — emergent stages are derived from
+    // trap layout. Synthesize an empty gates array so the rest of the
+    // codebase (e.g., engine + run-event) can read `arena.gates`
+    // without branching.
+    const gates: readonly Gate[] = Object.freeze([]);
+    return Object.freeze({
+      id,
+      type,
+      length,
+      width,
+      startGrid,
+      gates,
+      gauntletConfig,
       maxTicks,
     });
   }

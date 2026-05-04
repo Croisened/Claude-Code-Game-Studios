@@ -79,17 +79,21 @@ export function defaultBuildFinishLineTexture(): THREE.Texture {
 }
 
 /**
- * Build the finish-line mesh for `arena`. Throws if the arena has no
- * gates (a sprint-race arena always has at least one — the finish).
+ * Build the finish-line mesh for `arena`. The strip is placed at the
+ * x-position of the arena's final gate (sprint-race) OR at
+ * `arena.length` if the arena has no gates (gauntlet, future event
+ * types). Throws if `arena.length` is zero AND there are no gates.
  */
 export function createFinishLine(
   arena: Arena,
   opts: CreateFinishLineOptions = {},
 ): THREE.Mesh {
-  if (arena.gates.length === 0) {
-    throw new Error('createFinishLine: arena has no gates to mark');
+  const finishX = arena.gates.length > 0
+    ? arena.gates[arena.gates.length - 1].x
+    : arena.length;
+  if (finishX <= 0) {
+    throw new Error('createFinishLine: arena has no gates and length <= 0');
   }
-  const finishGate = arena.gates[arena.gates.length - 1];
 
   const texture = (opts.textureFactory ?? defaultBuildFinishLineTexture)();
 
@@ -113,7 +117,7 @@ export function createFinishLine(
   texture.rotation = Math.PI / 2;
 
   mesh.rotation.x = -Math.PI / 2; // lay flat on XZ
-  mesh.position.set(finishGate.x, HEIGHT_OFFSET, 0);
+  mesh.position.set(finishX, HEIGHT_OFFSET, 0);
 
   // Ensure the strip renders on top of the ground at z-fighting-free
   // depth even on hardware that interprets HEIGHT_OFFSET conservatively.

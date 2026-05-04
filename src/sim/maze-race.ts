@@ -58,8 +58,21 @@ interface MazeRaceState {
    * mistake candidates, preventing 1-cell oscillation at junctions.
    */
   readonly prevCellId: number[];
-  /** True once the first robot crosses into the finish cell. */
-  finished: boolean;
+  /**
+   * **Lever 5** — ticks remaining in the wrong-turn recovery window per
+   * robot. While > 0, the robot's effective `pMistake` is reduced by
+   * `recoveryBonusFactor`. Decrements once per tick during motion,
+   * regardless of whether an arrival fires. Set to `recoveryBonusTicks`
+   * the moment a robot picks a non-optimal candidate.
+   */
+  readonly recoveryTicks: number[];
+  /**
+   * **Lever 2** — tick of the first finish, or `null` while no robot
+   * has reached the finish cell. The race stays "open" for
+   * `finishGraceTicks` more ticks after this so trailing robots can
+   * co-finish before the field is culled with `race_over`.
+   */
+  finishTick: number | null;
 }
 
 export interface MazeRaceOptions {
@@ -70,7 +83,8 @@ function initState(layout: MazeLayout, rosterSize: number): MazeRaceState {
   return {
     targetCellId: new Array<number>(rosterSize).fill(layout.finishCellId),
     prevCellId: new Array<number>(rosterSize).fill(-1),
-    finished: false,
+    recoveryTicks: new Array<number>(rosterSize).fill(0),
+    finishTick: null,
   };
 }
 
@@ -99,30 +113,43 @@ function neighborCellId(
 
 const DIRS = [WALL_N, WALL_E, WALL_S, WALL_W] as const;
 
+interface PickResult {
+  readonly cellId: number;
+  /** True iff `cellId` was a non-optimal candidate (wrong turn or feint). */
+  readonly tookMistake: boolean;
+}
+
 /**
  * Pick the next cell id to head for from `arrivedCellId`. Consumes one
- * `rng()` draw. Encodes the wrong-turn behavior:
+ * `rng()` draw. Encodes the wrong-turn behavior plus Sprint 7 levers
+ * 3 (chaos feint) and 5 (recovery bonus).
  *
- *   - With probability `(1 - pathfinding) * mistakeMaxRate`, pick a
- *     random non-optimal, non-prev open neighbor (a "wrong turn").
- *   - Otherwise pick `nextOnPath[arrivedCellId]` (the BFS-shortest
- *     direction toward the finish, even if that means doubling back
- *     after a previous mistake — that's how robots recover).
+ * Single combined roll `u ∈ [0, 1)` partitioned as:
+ *   - `[0, pMistake)`             → pathfinding mistake (Cipher-driven)
+ *   - `[pMistake, pMistake+pFeint)` → chaos feint (Degen-driven, Lever 3)
+ *   - `[pMistake+pFeint, 1)`      → optimal direction
  *
- * Cipher-trait-driven `stat.pathfinding` ranges roughly [0.3, 1.0]; with
- * `mistakeMaxRate = 0.3` that yields a 0–21% per-junction mistake rate.
- * Junctions with no non-prev alternative (corridors, dead-ends) skip the
- * roll and always take optimal — there is no other choice.
+ * `pMistake` is multiplied by `(1 - recoveryBonusFactor)` while the
+ * robot is in its post-mistake recovery window (Lever 5). The chaos
+ * feint is **not** dampened by recovery — it's a separate mechanism
+ * representing degen-driven impulsiveness, not a navigation mistake.
+ *
+ * Junctions with no non-prev alternative (corridors, dead-ends) skip
+ * the candidate selection and always take optimal — but the rng()
+ * draw still happens to keep the per-arrival rng count constant
+ * across robots.
  */
 function pickNextCell(
   layout: MazeLayout,
   arrivedCellId: number,
   prevCellId: number,
   pathfinding: number,
+  chaos: number,
+  recoveryActive: boolean,
   rng: () => number,
-): number {
+): PickResult {
   const optimal = layout.nextOnPath[arrivedCellId];
-  if (optimal === -1) return -1;
+  if (optimal === -1) return { cellId: -1, tookMistake: false };
   const wm = layout.wallMask[arrivedCellId];
 
   // Enumerate open, in-grid neighbors that are NOT the optimal direction
@@ -139,18 +166,24 @@ function pickNextCell(
   }
 
   const u = rng();
-  if (candidates.length === 0) return optimal;
-  const pMistake =
-    (1 - pathfinding) * CONFIG.sim.mazeRace.mistakeMaxRate;
-  if (u >= pMistake) return optimal;
-  // Reuse `u` as the candidate selector by remapping `[0, pMistake)` to
-  // `[0, candidates.length)`. Single rng() draw per arrival keeps the
-  // engine's "deterministic per seed" contract clean.
+  if (candidates.length === 0) return { cellId: optimal, tookMistake: false };
+
+  const k = CONFIG.sim.mazeRace;
+  const recoveryFactor = recoveryActive ? 1 - k.recoveryBonusFactor : 1;
+  const pMistake = (1 - pathfinding) * k.mistakeMaxRate * recoveryFactor;
+  const pFeint = chaos * k.chaosFeintScale;
+  // Cap the combined "off-optimal" rate at 1 so we don't overflow the
+  // [0, 1) roll. Saturated cases pick optimal with probability 0.
+  const pOff = Math.min(1, pMistake + pFeint);
+
+  if (u >= pOff) return { cellId: optimal, tookMistake: false };
+  // Remap `[0, pOff)` to `[0, candidates.length)` for candidate
+  // selection. Single rng() draw per arrival.
   const idx = Math.min(
     candidates.length - 1,
-    Math.floor((u / pMistake) * candidates.length),
+    Math.floor((u / pOff) * candidates.length),
   );
-  return candidates[idx];
+  return { cellId: candidates[idx], tookMistake: true };
 }
 
 function buildStartPoses(
@@ -249,6 +282,13 @@ function advanceMotion(
     const jitter = 1 + (ctx.rng() * 2 - 1) * stat.chaos * k.chaosScale;
     const speed = k.baseSpeedMps * stat.speed * cautionFactor * jitter;
 
+    // Lever 5: decrement the recovery-window counter once per tick.
+    // Floor at 0; pickNextCell reads "recoveryTicks > 0" for the
+    // recovery-active flag. Decrementing every tick (not just on
+    // arrivals) gives a real-time-bounded window that doesn't depend
+    // on how dense the local junction graph is.
+    if (state.recoveryTicks[id] > 0) state.recoveryTicks[id] -= 1;
+
     // Resolve the current target cell. If the robot has reached its
     // target, advance to the next cell — picking optimally most of the
     // time, but rolling for a wrong-turn mistake based on `pathfinding`.
@@ -265,28 +305,39 @@ function advanceMotion(
         pose.z = targetPos.z;
         if (targetCellId === layout.finishCellId) {
           // Robot has arrived at the finish cell. The processFinish
-          // phase emits the finish event and ends the race.
+          // phase emits the finish event (Lever 2: may co-finish if
+          // within the grace window).
           continue;
         }
-        const nextId = pickNextCell(
+        const pick = pickNextCell(
           layout,
           targetCellId,
           state.prevCellId[id],
           stat.pathfinding,
+          stat.chaos,
+          state.recoveryTicks[id] > 0,
           ctx.rng,
         );
-        if (nextId === -1) {
+        if (pick.cellId === -1) {
           // Disconnected cell — shouldn't happen in a perfect maze, but
           // be safe: stop moving this robot.
           continue;
         }
+        // Lever 5: arming the recovery window. Set immediately AFTER
+        // a non-optimal pick so the next ~recoveryBonusTicks ticks see
+        // a reduced pMistake. We arm regardless of whether the robot
+        // had recovery active at the time of this pick — a second
+        // mistake during recovery refreshes the window.
+        if (pick.tookMistake) {
+          state.recoveryTicks[id] = k.recoveryBonusTicks;
+        }
         // Update prev BEFORE overwriting targetCellId. After this, the
-        // robot is "at" `targetCellId` and headed toward `nextId`, so
-        // its next arrival decision will see prev = the cell it just
-        // left = the current `targetCellId`.
+        // robot is "at" `targetCellId` and headed toward `pick.cellId`,
+        // so its next arrival decision will see prev = the cell it
+        // just left = the current `targetCellId`.
         state.prevCellId[id] = targetCellId;
-        state.targetCellId[id] = nextId;
-        targetCellId = nextId;
+        state.targetCellId[id] = pick.cellId;
+        targetCellId = pick.cellId;
       }
     }
 
@@ -369,13 +420,17 @@ function processFinish(
 } {
   const finishes: { robotId: number }[] = [];
   const eliminations: { robotId: number; reason: string }[] = [];
-  if (state.finished) return { finishes, eliminations };
 
   const finishPos = cellIdWorldPos(layout, layout.finishCellId);
-  const arrivalSq =
-    CONFIG.sim.mazeRace.cellArrivalRadius * CONFIG.sim.mazeRace.cellArrivalRadius;
+  const k = CONFIG.sim.mazeRace;
+  const arrivalSq = k.cellArrivalRadius * k.cellArrivalRadius;
 
-  // Id-ascending tiebreak — first id in the loop wins ties.
+  // Lever 2: collect every active robot inside the finish cell's
+  // arrival radius this tick, in id-ascending order. The engine
+  // assigns places in the order we push to `finishes`, so id-ascending
+  // gives the deterministic same-tick tiebreak. The first finisher
+  // wins (engine.winnerId = finishOrder[0]); same-tick co-finishers
+  // get place 2, 3, …
   for (let id = 0; id < ctx.poses.length; id++) {
     const pose = ctx.poses[id];
     if (!pose.active) continue;
@@ -383,14 +438,35 @@ function processFinish(
     const dz = finishPos.z - pose.z;
     if (dx * dx + dz * dz > arrivalSq) continue;
     finishes.push({ robotId: id });
-    state.finished = true;
-    // Eliminate everyone else still active so the engine stops them.
+    if (state.finishTick === null) {
+      state.finishTick = ctx.tick;
+    }
+  }
+
+  // Lever 2: cull the remaining field with race_over only when the
+  // grace window (in ticks since first finish) has elapsed. If
+  // `finishGraceTicks` is 0 the cull happens the same tick as the
+  // first finish — equivalent to pre-S7-02 behaviour.
+  if (
+    state.finishTick !== null &&
+    ctx.tick >= state.finishTick + k.finishGraceTicks
+  ) {
     for (let j = 0; j < ctx.poses.length; j++) {
-      if (j === id) continue;
       if (!ctx.poses[j].active) continue;
+      // Skip robots that just finished THIS tick — they're in the
+      // `finishes` list and the engine flips them inactive after this
+      // function returns. Without the skip we'd emit both `finish` and
+      // `elimination` for the same robot on the same tick.
+      let isFinishingThisTick = false;
+      for (let f = 0; f < finishes.length; f++) {
+        if (finishes[f].robotId === j) {
+          isFinishingThisTick = true;
+          break;
+        }
+      }
+      if (isFinishingThisTick) continue;
       eliminations.push({ robotId: j, reason: ELIM_REASON_RACE_OVER });
     }
-    break;
   }
 
   return { finishes, eliminations };
@@ -429,7 +505,14 @@ export function createMazeRaceModule(opts: MazeRaceOptions): EventModule {
 
     isDone(ctx: TickContext): boolean {
       const s = ensureState(ctx.poses.length);
-      if (s.finished) return true;
+      // Lever 2: we stay "not done" until the grace window expires AND
+      // either the cull has fired or no actives remain. The engine
+      // checks `isDone` BEFORE calling `tick`, so reporting done as
+      // soon as the cull tick arrives causes the cull to be skipped.
+      // We require either: (a) all robots inactive, or (b) finishTick
+      // set AND tick has advanced past the grace window AND the field
+      // has actually been culled (no actives remain). Condition (b)
+      // collapses to (a) once the cull fires, so just check (a).
       for (let i = 0; i < ctx.poses.length; i++) {
         if (ctx.poses[i].active) return false;
       }

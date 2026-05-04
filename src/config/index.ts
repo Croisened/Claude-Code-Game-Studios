@@ -164,6 +164,146 @@ export const CONFIG = {
        * stays under 4% per junction, ~1 mistake per race. Range 0–0.7.
        */
       mistakeMaxRate: 0.6,
+
+      /**
+       * **Lever 2 (S7-02)** — finish-cell grace window in ticks. After
+       * the first robot enters the finish cell, the race stays "open"
+       * for this many ticks; any other robot that reaches the finish
+       * within the window is also emitted as a `finish` event (place
+       * 2, 3, …) instead of being culled with `race_over`. Creates
+       * photo-finish drama when a leading robot is barely ahead.
+       *
+       * 4 ticks = 67ms at 60Hz tickRate. At default speed 4.5 m/s with
+       * 60Hz, robots cover ~30cm/tick — so trailing robots within
+       * ~1.2m of the finish at the moment of first arrival can still
+       * co-finish. Range 0–10. Set to 0 to disable.
+       */
+      finishGraceTicks: 4,
+
+      /**
+       * **Lever 3 (S7-02)** — chaos-driven feint at junctions. On top
+       * of the pathfinding-driven `pMistake`, a chaos-weighted slice
+       * `pFeint = stat.chaos * chaosFeintScale` of the [0, 1) roll
+       * also picks a non-optimal candidate. Effective per-junction
+       * non-optimal rate becomes `pMistake + pFeint` (capped at 1).
+       *
+       * Effect: high-Degen robots second-guess at junctions even when
+       * their Cipher would otherwise have them taking optimal. Adds
+       * unpredictability without eliminating Cipher's value — a
+       * max-Degen / max-Cipher robot still navigates well most of the
+       * time. Range 0–0.3. Default 0.15: at chaos=1 adds ~15%
+       * per-junction feint rate.
+       */
+      chaosFeintScale: 0.15,
+
+      /**
+       * **Lever 5 (S7-02)** — wrong-turn recovery bonus duration in
+       * ticks. After a robot takes a non-optimal candidate, this many
+       * subsequent ticks have `pMistake` reduced (see
+       * `recoveryBonusFactor`). Models "I just messed up, I'd better
+       * focus" — makes mistakes survivable without removing them.
+       * Range 0–60. Default 6: a few junction-encounters' worth.
+       */
+      recoveryBonusTicks: 6,
+
+      /**
+       * **Lever 5 (S7-02)** — multiplicative reduction on `pMistake`
+       * during the recovery window. `pMistake_effective = pMistake *
+       * (1 - recoveryBonusFactor)`. Range 0–1. Default 0.5: halves
+       * the per-junction mistake rate during recovery.
+       *
+       * Determinism note: recovery is per-robot state mutated only
+       * during pickNextCell — no rng() calls beyond the existing one;
+       * output is byte-identical for a fixed seed.
+       */
+      recoveryBonusFactor: 0.5,
+    },
+
+    /**
+     * Obstacle Gauntlet event tunables consumed by
+     * `createObstacleGauntletModule` (`src/sim/obstacle-gauntlet.ts`).
+     * v1 starting values are calibrated for arena-03 (240 m linear
+     * course with three trap stages: pits → hammers → bridge → finish).
+     * Doubter-driven `stat.caution` is the favoured trait — it
+     * counters fall probability in pit zones AND drives hammer
+     * timing-aware slowdown.
+     */
+    gauntletRace: {
+      /** Course-velocity baseline in m/s. Same scale as sprint-race. */
+      baseSpeedMps: 6,
+
+      /** Multiplier on velocity from caution. Range 0–0.5. */
+      cautionScale: 0.2,
+
+      /** Per-tick velocity jitter amplitude scaled by chaos. Range 0–0.5. */
+      chaosScale: 0.15,
+
+      /**
+       * Per-tick fall probability while inside a pit zone. Multiplied
+       * by `(1 - caution * cautionPitSafety)`. With default
+       * `pitFallRatePerTick = 0.004` and `cautionPitSafety = 0.95`,
+       * caution = 0.5 (median Doubter) robots fall at ~0.21%/tick.
+       * Over an 18m pit zone at 6 m/s (~180 ticks), that's
+       * cumulative ~31% fall rate — leaves ~58 survivors.
+       *
+       * Caution = 0 (no Doubter) → ~0.4%/tick, ~52% cumulative.
+       * Caution = 1 (max Doubter) → ~0.02%/tick, ~3.6% cumulative.
+       *
+       * Tuning target per game-concept §3: Stage 1 cull thins the
+       * field; not all of it. Combined with hammer + bridge stages
+       * the cumulative survival rate at finish is ~10-15%.
+       */
+      pitFallRatePerTick: 0.0012,
+
+      /** Per-unit-caution reduction in pit fall probability. Range 0.5–1. */
+      cautionPitSafety: 0.95,
+
+      /**
+       * Hammer-aware slowdown lookahead distance in metres. At each
+       * tick, every active robot scans for hammers within this
+       * distance ahead and predicts the hammer's phase at arrival
+       * time. If the hammer would be DOWN at arrival, the robot's
+       * speed is multiplied by `(1 - caution * cautionHammerSlowdown)`
+       * — high-caution robots slow to wait for the hammer to clear.
+       *
+       * Range 5–30 metres. Larger = robots react earlier to far
+       * hammers; smaller = closer-to-trap braking. 12 m is roughly
+       * 2 seconds at the default speed.
+       */
+      hammerLookaheadM: 12,
+
+      /**
+       * Per-unit-caution slowdown applied when a hammer ahead is
+       * currently down. `factor = max(0, 1 - caution *
+       * cautionHammerSlowdown)`. With default 1.8: caution ~ 0.55
+       * gives factor 0 (full stop). Lower-caution robots brake but
+       * keep moving — they need to luck out on hammer phase.
+       *
+       * The default is calibrated against the actual roster's Doubter
+       * distribution (mean ~17/100, so caution ~ 0.17 average): most
+       * robots brake but don't fully stop, taking their chances.
+       * Robots with Doubter ≥ ~50 brake to 0 and reliably time their
+       * pass.
+       *
+       * Range 0–3. Higher = more robots fully stop; lower = none do.
+       */
+      cautionHammerSlowdown: 1.8,
+
+      /**
+       * Boids-style 2D separation — same shape as sprint-race, slightly
+       * lighter because gauntlet corridors are wider and we want robots
+       * to occasionally bunch (to make hammer-cluster eliminations more
+       * dramatic).
+       */
+      separationRadius: 1.4,
+      separationForceMps: 4.5,
+      separationCoincidentEps: 0.05,
+
+      /**
+       * Lateral safety margin from the arena's z-bounds (`±width/2`).
+       * Same as sprint-race — keeps robots inside the visible arena.
+       */
+      lateralBoundMargin: 0.5,
     },
 
     traitToStat: {
@@ -253,6 +393,8 @@ export const CONFIG = {
     defaultArenaPath: '/assets/data/arenas/arena-01.json',
     /** URL for Arena-02 (`maze-race`). Loaded when the route is `#peek-maze`. */
     mazeArenaPath: '/assets/data/arenas/arena-02.json',
+    /** URL for Arena-03 (`obstacle-gauntlet`). Loaded when the route is `#peek-gauntlet`. */
+    gauntletArenaPath: '/assets/data/arenas/arena-03.json',
   },
 
   camera: {

@@ -16,9 +16,11 @@ import {
   createMazeFinishTree,
   getMazeFinishTreeWorldPos,
 } from '@/arena-visuals/maze-walls';
+import { createGauntletTraps } from '@/arena-visuals/gauntlet-traps';
 import { runSim, type EventModule } from '@/sim/engine';
 import { createSprintRaceModule } from '@/sim/sprint-race';
 import { createMazeRaceModule } from '@/sim/maze-race';
+import { createObstacleGauntletModule } from '@/sim/obstacle-gauntlet';
 import { generateMazeLayout } from '@/sim/maze';
 import { loadRoster, type RobotRoster } from '@/sim/robot-roster';
 import { loadArena, type Arena } from '@/sim/arena';
@@ -55,28 +57,37 @@ const GROUND_PAD_Z = 40;
 const MAZE_GROUND_COLOR = 0x3a5527;
 
 /** Peek mode hides the dev HUD and shows a minimal training caption +
- *  back link. Triggered by the '#peek' / '#peek-maze' hashes from Landing. */
+ *  back link. Triggered by any of the `#peek*` hashes from Landing. */
+const PEEK_HASHES = ['#peek', '#peek-maze', '#peek-gauntlet'] as const;
 function isPeekMode(): boolean {
   if (typeof window === 'undefined') return false;
-  const h = window.location.hash;
-  return h === '#peek' || h === '#peek-maze';
+  return PEEK_HASHES.includes(window.location.hash as (typeof PEEK_HASHES)[number]);
 }
 
 /**
  * Pick which arena JSON to load based on the URL hash.
  *
- * - `#peek`       → sprint race (Arena-01). Explicit opt-in for the
- *                   original linear race; landing's "Sprint Race →"
- *                   button sends users here.
- * - `#peek-maze`  → maze race (Arena-02).
- * - Anything else → maze race. Dev (`npm run dev`, no hash) lands here
- *                   so we can iterate on the maze without typing the
- *                   route every reload.
+ * - `#peek`           → sprint race (Arena-01). Explicit opt-in for the
+ *                       linear race; landing's "Sprint Race →" button
+ *                       sends users here.
+ * - `#peek-maze`      → maze race (Arena-02).
+ * - `#peek-gauntlet`  → obstacle gauntlet (Arena-03).
+ * - Anything else     → maze race. Dev (`npm run dev`, no hash) lands
+ *                       here so iteration on the maze doesn't need a
+ *                       hash on every reload.
  */
 function arenaPathFromHash(): string {
   if (typeof window === 'undefined') return CONFIG.arena.mazeArenaPath;
-  if (window.location.hash === '#peek') return CONFIG.arena.defaultArenaPath;
-  return CONFIG.arena.mazeArenaPath;
+  switch (window.location.hash) {
+    case '#peek':
+      return CONFIG.arena.defaultArenaPath;
+    case '#peek-maze':
+      return CONFIG.arena.mazeArenaPath;
+    case '#peek-gauntlet':
+      return CONFIG.arena.gauntletArenaPath;
+    default:
+      return CONFIG.arena.mazeArenaPath;
+  }
 }
 
 /**
@@ -106,6 +117,14 @@ interface ArenaSetup {
   readonly sceneObjects: readonly THREE.Object3D[];
   readonly leaderResolver?: LeaderResolver;
   readonly cameraSettings?: typeof CONFIG.camera.follow | typeof CONFIG.camera.mazeFollow;
+  /**
+   * Per-frame visuals updater. Called by the App's rAF with the
+   * current sim tick. Used by gauntlet visuals (hammer rotation,
+   * bridge crumble) to stay sim-authoritative — visuals derive their
+   * state from the same tick the sim does, so browser and harness
+   * agree on what the world looks like.
+   */
+  readonly visualsUpdate?: (tickFloat: number) => void;
   /**
    * If set, the camera is positioned to this fixed pose at mount and
    * never updated. Mutually exclusive with `leaderResolver` /
@@ -142,45 +161,91 @@ interface BuildArenaSetupOptions {
  */
 function buildArenaSetup(opts: BuildArenaSetupOptions): ArenaSetup {
   const { arena, seed } = opts;
-  if (arena.type === 'maze-race') {
-    if (!arena.mazeConfig) {
-      throw new Error('maze-race arena loaded without mazeConfig — loader bug');
+  switch (arena.type) {
+    case 'sprint-race':
+      return {
+        eventModule: createSprintRaceModule(),
+        sceneObjects: [createFinishLine(arena)],
+      };
+
+    case 'obstacle-gauntlet': {
+      if (!arena.gauntletConfig) {
+        throw new Error('obstacle-gauntlet arena loaded without gauntletConfig — loader bug');
+      }
+      const eventModule = createObstacleGauntletModule();
+      const visuals = createGauntletTraps(arena);
+      const bridge = arena.gauntletConfig.bridge;
+      // The sim's GauntletState owns `bridgeEnteredTick` internally and
+      // doesn't expose it. The renderer detects bridge entry by reading
+      // robot positions each frame: when ANY active robot is past
+      // bridge.xStart, set bridgeEnteredTick to the current sim tick.
+      // This stays deterministic because the bridge poses come from
+      // the same SimResult driving the sim's own state — the tick at
+      // which the renderer observes "first robot past bridge.xStart"
+      // matches the tick the sim observes.
+      let bridgeEnteredTick: number | null = null;
+      const renderer = opts.renderer;
+      const visualsUpdate = (tickFloat: number) => {
+        if (bridgeEnteredTick === null) {
+          const insts = renderer.getAllInstances();
+          for (const inst of insts) {
+            if (inst.root.position.x >= bridge.xStart) {
+              bridgeEnteredTick = tickFloat;
+              break;
+            }
+          }
+        }
+        visuals.update(tickFloat, bridgeEnteredTick, CONFIG.sim.tickRateHz);
+      };
+      return {
+        eventModule,
+        sceneObjects: [createFinishLine(arena), visuals.group],
+        visualsUpdate,
+      };
     }
-    const layout = generateMazeLayout({ config: arena.mazeConfig, seed });
-    const wallsGroup = createMazeWalls(layout);
-    const finishTree = createMazeFinishTree(layout);
-    const eventModule = createMazeRaceModule({ layout });
 
-    // Static camera. The maze is centered at world origin (length × width
-    // square). A fixed-angle vantage that frames the entire grid keeps
-    // the maze stationary in screen-space — no camera tracking, no leader
-    // hysteresis, no jitter. Robots move *within* the frame.
-    //
-    // Camera distance scales with `arena.width` so a doubled maze stays
-    // framed. Tilt is roughly 30° off vertical (atan(0.55 / 1.05)),
-    // giving an isometric-feeling overhead with enough perspective to
-    // read wall heights vs. floor.
-    const halfMaze = Math.max(arena.length, arena.width) / 2;
-    const camY = halfMaze * 2.1;
-    const camZ = halfMaze * 1.1;
-    const staticCameraPlacement: StaticCameraPlacement = {
-      position: { x: 0, y: camY, z: camZ },
-      lookAt: { x: 0, y: 0, z: 0 },
-    };
+    case 'maze-race': {
+      if (!arena.mazeConfig) {
+        throw new Error('maze-race arena loaded without mazeConfig — loader bug');
+      }
+      const layout = generateMazeLayout({ config: arena.mazeConfig, seed });
+      const wallsGroup = createMazeWalls(layout);
+      const finishTree = createMazeFinishTree(layout);
+      const eventModule = createMazeRaceModule({ layout });
 
-    return {
-      eventModule,
-      sceneObjects: [wallsGroup, finishTree],
-      staticCameraPlacement,
-      winnerCamTarget: getMazeFinishTreeWorldPos(layout),
-    };
+      // Static camera. The maze is centered at world origin (length × width
+      // square). A fixed-angle vantage that frames the entire grid keeps
+      // the maze stationary in screen-space — no camera tracking, no leader
+      // hysteresis, no jitter. Robots move *within* the frame.
+      //
+      // Camera distance scales with `arena.width` so a doubled maze stays
+      // framed. Tilt is roughly 30° off vertical (atan(0.55 / 1.05)),
+      // giving an isometric-feeling overhead with enough perspective to
+      // read wall heights vs. floor.
+      const halfMaze = Math.max(arena.length, arena.width) / 2;
+      const camY = halfMaze * 2.1;
+      const camZ = halfMaze * 1.1;
+      const staticCameraPlacement: StaticCameraPlacement = {
+        position: { x: 0, y: camY, z: camZ },
+        lookAt: { x: 0, y: 0, z: 0 },
+      };
+
+      return {
+        eventModule,
+        sceneObjects: [wallsGroup, finishTree],
+        staticCameraPlacement,
+        winnerCamTarget: getMazeFinishTreeWorldPos(layout),
+      };
+    }
+
+    default: {
+      // Exhaustive guard. When S7-04 adds 'obstacle-gauntlet' to the
+      // ArenaType union, TypeScript flags this as a never-narrow
+      // violation and forces the new arm to land.
+      const _exhaustive: never = arena.type;
+      throw new Error(`unknown arena.type: ${String(_exhaustive)}`);
+    }
   }
-
-  // Default: sprint-race.
-  return {
-    eventModule: createSprintRaceModule(),
-    sceneObjects: [createFinishLine(arena)],
-  };
 }
 
 /** Per-mounted-scene state used by the camera effect to attach handlers. */
@@ -360,6 +425,11 @@ export function App() {
           const now = performance.now();
           const done = driver.isDone();
           const tick = done ? driver.getTotalTicks() : driver.getCurrentTick();
+          // Per-arena visuals updater (gauntlet hammer rotation +
+          // bridge crumble). Runs every frame against the integer
+          // sim tick — the sub-tick lag is < 17 ms which is
+          // imperceptible for a swinging hammer.
+          built.visualsUpdate?.(tick);
           if (now - lastSampleAt >= 1000) {
             const fps = (frameCount * 1000) / (now - lastSampleAt);
             setStats((s) => ({ ...s, fps, currentTick: tick, isDone: done }));
@@ -662,7 +732,7 @@ function DevHud({ stats }: DevHudProps) {
         pointerEvents: 'none',
       }}
     >
-      <div>S6-02 — Sim ↔ Renderer Bridge</div>
+      <div>Robo Rhapsody Sim — Dev HUD</div>
       <div>Robots: {stats.robotCount} / {CONFIG.renderer.robotCount}</div>
       <div>FPS: {stats.fps.toFixed(1)}</div>
       <div>Status: {stats.loadStatus}</div>
@@ -708,7 +778,11 @@ const peekButtonStyle = {
 
 function PeekOverlay({ loadStatus, errorMessage, arenaId, onRaceAgain }: PeekOverlayProps) {
   const caption =
-    arenaId === 'arena-02' ? 'MAZE RACE · ARENA 02' : 'SPRINT RACE · ARENA 01';
+    arenaId === 'arena-02'
+      ? 'MAZE RACE · ARENA 02'
+      : arenaId === 'arena-03'
+        ? 'OBSTACLE GAUNTLET · ARENA 03'
+        : 'SPRINT RACE · ARENA 01';
   const goBack = (e: MouseEvent) => {
     e.preventDefault();
     window.location.hash = '';

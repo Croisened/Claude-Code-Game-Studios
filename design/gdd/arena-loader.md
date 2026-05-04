@@ -182,10 +182,82 @@ author's responsibility.
 }
 ```
 
+**Maze input shape (`type: 'maze-race'`, S6):**
+
+```jsonc
+{
+  "id": "arena-02",
+  "type": "maze-race",
+  "length": 168,
+  "width": 168,
+  "maxTicks": 10800,
+  "mazeConfig": {
+    "cellSize": 4,         // metres per cell (square)
+    "gridCols": 42,        // columns (X axis)
+    "gridRows": 42,        // rows (Z axis)
+    "entranceCount": 10,   // number of perimeter entrance cells
+    "finishCol": 21,       // 0-based column index of finish cell
+    "finishRow": 21        // 0-based row index of finish cell
+  }
+}
+```
+
+For maze-race arenas the loader synthesizes a stub `startGrid` (1×1)
+and an empty `gates` array so downstream code can read those fields
+uniformly without branching. `mazeConfig` is the load-bearing block.
+
+**Gauntlet input shape (`type: 'obstacle-gauntlet'`, S7-04):**
+
+```jsonc
+{
+  "id": "arena-03",
+  "type": "obstacle-gauntlet",
+  "length": 240,
+  "width": 36,
+  "maxTicks": 7200,
+  "startGrid": {           // sprint-race-style row-major staging
+    "lanes": 17, "rows": 5,
+    "laneSpacing": 1.8, "rowSpacing": 4.0
+  },
+  "gauntletConfig": {
+    "pitZones": [
+      { "xStart": 60, "xEnd": 78 }
+    ],
+    "hammers": [
+      { "x": 110, "killRadius": 1.0, "cycleTicks": 80,
+        "downStartTick": 0,  "downEndTick": 20 },
+      { "x": 128, "killRadius": 1.0, "cycleTicks": 80,
+        "downStartTick": 28, "downEndTick": 48 },
+      { "x": 146, "killRadius": 1.0, "cycleTicks": 80,
+        "downStartTick": 56, "downEndTick": 76 }
+    ],
+    "bridge": {
+      "xStart": 175, "xEnd": 220, "crumbleSpeedMps": 3.0
+    }
+  }
+}
+```
+
+For gauntlet arenas the loader uses the supplied `startGrid` (just
+like sprint-race) and synthesizes an empty `gates` array. The
+`gauntletConfig` is the load-bearing block.
+
+**Gauntlet validation rules** (in addition to common shape checks):
+
+- `pitZones[i]`: `0 ≤ xStart < xEnd ≤ length`.
+- `hammers[i]`: `0 ≤ x ≤ length`; `killRadius > 0`; `cycleTicks ≥ 1`;
+  `0 ≤ downStartTick < downEndTick ≤ cycleTicks` (no wrap-around in v1).
+- `bridge`: `0 ≤ xStart < xEnd ≤ length`; `crumbleSpeedMps > 0`.
+- Trap-ordering invariant: all pit zones must end before the first
+  hammer; all hammers must precede `bridge.xStart`. Pits → hammers
+  → bridge → finish along +X is enforced. (The loader rejects
+  layouts that violate this so the gauntlet's stage ordering is
+  guaranteed at the type level.)
+
 **Public types (exported from `src/sim/arena.ts`):**
 
 ```ts
-export type ArenaType = 'sprint-race';
+export type ArenaType = 'sprint-race' | 'maze-race' | 'obstacle-gauntlet';
 
 export interface Gate {
   readonly name: string;
@@ -200,6 +272,37 @@ export interface StartGrid {
   readonly rowSpacing: number;
 }
 
+export interface MazeArenaConfig {
+  readonly cellSize: number;
+  readonly gridCols: number;
+  readonly gridRows: number;
+  readonly entranceCount: number;
+  readonly finishCol: number;
+  readonly finishRow: number;
+}
+
+export interface PitZone { readonly xStart: number; readonly xEnd: number; }
+
+export interface HammerSpec {
+  readonly x: number;
+  readonly killRadius: number;
+  readonly cycleTicks: number;
+  readonly downStartTick: number;
+  readonly downEndTick: number;
+}
+
+export interface BridgeSpec {
+  readonly xStart: number;
+  readonly xEnd: number;
+  readonly crumbleSpeedMps: number;
+}
+
+export interface GauntletConfig {
+  readonly pitZones: readonly PitZone[];
+  readonly hammers: readonly HammerSpec[];
+  readonly bridge: BridgeSpec;
+}
+
 export interface Arena {
   readonly id: string;
   readonly type: ArenaType;
@@ -207,10 +310,14 @@ export interface Arena {
   readonly width: number;
   readonly startGrid: StartGrid;
   readonly gates: readonly Gate[];
+  readonly mazeConfig?: MazeArenaConfig;       // present iff type='maze-race'
+  readonly gauntletConfig?: GauntletConfig;    // present iff type='obstacle-gauntlet'
+  readonly maxTicks?: number;
 }
 
 export interface LoadArenaOptions {
   readonly arenaSource?: () => Promise<unknown>;
+  readonly arenaPath?: string;
 }
 
 export function loadArena(opts?: LoadArenaOptions): Promise<Arena>;

@@ -470,6 +470,15 @@ Per `design-docs.md` rule, each downstream system's GDD must list
   around. The [Sim ↔ Renderer Bridge](./sim-driver.md) (S6-02) is the
   authoritative writer of `RobotInstance.root.position` / `.rotation`
   per render frame; the renderer just renders. No back-channel.
+
+  **Documented exception:** the
+  [Winner Camera](./camera-system.md) (Camera System GDD §3 R23) is
+  permitted to write `RobotInstance.root.rotation.y` on the winning
+  robot at race-end so the winner faces the camera in the portrait
+  cut. The Winner Camera's rAF tick registers AFTER the bridge's, so
+  the per-frame write order is bridge → winner cam → render. This is
+  the **only** documented non-sim writer of `RobotInstance.rotation`
+  across the project.
 - **Seedable PRNG** — the renderer uses fixed per-instance time offsets
   (`id * 0.07`) for the visual phase desync, not random offsets. No RNG
   dependency.

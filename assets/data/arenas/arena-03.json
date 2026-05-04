@@ -1,0 +1,28 @@
+{
+  "id": "arena-03",
+  "type": "obstacle-gauntlet",
+  "length": 240,
+  "width": 36,
+  "maxTicks": 7200,
+  "startGrid": {
+    "lanes": 17,
+    "rows": 5,
+    "laneSpacing": 1.8,
+    "rowSpacing": 4.0
+  },
+  "gauntletConfig": {
+    "pitZones": [
+      { "xStart": 60, "xEnd": 78 }
+    ],
+    "hammers": [
+      { "x": 110, "killRadius": 1.0, "cycleTicks": 80, "downStartTick": 0, "downEndTick": 20 },
+      { "x": 128, "killRadius": 1.0, "cycleTicks": 80, "downStartTick": 28, "downEndTick": 48 },
+      { "x": 146, "killRadius": 1.0, "cycleTicks": 80, "downStartTick": 56, "downEndTick": 76 }
+    ],
+    "bridge": {
+      "xStart": 175,
+      "xEnd": 220,
+      "crumbleSpeedMps": 3.0
+    }
+  }
+}

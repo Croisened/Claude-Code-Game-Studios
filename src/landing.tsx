@@ -212,6 +212,7 @@ function SneakPeekButton() {
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
         <PeekButton hash="peek" label="Sprint Race →" />
         <PeekButton hash="peek-maze" label="Maze Race →" />
+        <PeekButton hash="peek-gauntlet" label="Obstacle Gauntlet →" />
       </div>
       <p
         style={{

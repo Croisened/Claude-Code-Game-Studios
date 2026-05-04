@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Created**: 2026-04-24
-> **Last Updated**: 2026-05-04
+> **Last Updated**: 2026-05-04 (S7-08)
 > **Source Concept**: design/gdd/game-concept.md
 
 ---
@@ -47,6 +47,8 @@ is unused in v1).
 | 12 | Camera System | Presentation | MVP | Approved | design/gdd/camera-system.md | 85-Instance Skinned Mesh Renderer, Sim Driver |
 | 13 | Winner Presentation | Presentation | MVP | Approved | design/gdd/winner-presentation.md | Sim Driver, 85-Instance Skinned Mesh Renderer, Camera System, Robot Roster Loader |
 | 14 | Preact App Shell | UI | MVP | Approved | design/gdd/preact-app-shell.md | Sim Driver, Camera System, 85-Instance Skinned Mesh Renderer, Winner Presentation |
+| 15 | Maze Race Event Module | Gameplay | MVP | Approved | design/gdd/maze-race-event-module.md | Sim Engine Core, Arena Loader, Trait → Stat Derivation |
+| 16 | Obstacle Gauntlet Event Module | Gameplay | MVP | Approved | design/gdd/obstacle-gauntlet-event-module.md | Sim Engine Core, Arena Loader, Trait → Stat Derivation |
 
 > Systems 4, 5, 8, 12, 13, 14 were explicit in the spec. Systems 1, 2, 3, 6, 7, 9, 10
 > are implicit — required for the explicit systems to function, enumerated during
@@ -63,7 +65,7 @@ is unused in v1).
 | Category | Description | Systems in v1 |
 |----------|-------------|---------------|
 | **Core** | Foundation systems everything depends on | Config, PRNG, Build/Deploy, Trait→Stat, Roster Loader, Arena Loader |
-| **Gameplay** | The systems that drive the sim and bridge it to consumers | Sim Engine Core, Sprint Race Event Module, Sim Driver |
+| **Gameplay** | The systems that drive the sim and bridge it to consumers | Sim Engine Core, Sprint Race Event Module, Maze Race Event Module, Obstacle Gauntlet Event Module, Sim Driver |
 | **Rendering** | Visual presentation of sim state | 85-Instance Renderer, Animation State Switcher |
 | **Presentation** | Viewer-facing feedback and control | Camera System, Winner Presentation |
 | **UI** | Shell and interactive controls | Preact App Shell |
@@ -197,12 +199,12 @@ is doing.
 
 | Metric | Count |
 |--------|-------|
-| Total systems identified (v1) | 14 |
-| Deferred systems (v1.1+) | 14 |
-| Design docs started | 14 |
-| Design docs reviewed | 14 |
-| Design docs approved | 14 |
-| MVP systems designed | 14 / 14 |
+| Total systems identified (v1) | 16 |
+| Deferred systems (v1.1+) | 12 |
+| Design docs started | 16 |
+| Design docs reviewed | 16 |
+| Design docs approved | 16 |
+| MVP systems designed | 16 / 16 |
 
 ---
 
@@ -215,9 +217,9 @@ condition under which it should re-enter the backlog.
 |------|--------|------------------|
 | v1.1 | Replay Pipeline (writer + Storage client, combined) | Want to share winning runs or rewatch events |
 | v1.1 | Database Schema — `robots` + basic `events` table | Want any persistence of event results |
-| v1.1 | Maze Run event module + Maze Arena JSON | Need second event type for viewer variety |
+| ✅ MVP (S6) | Maze Race Event Module + Arena-02 JSON | Shipped Sprint 6 (unplanned); reverse-doc'd in Sprint 7 (S7-01). |
 | v1.1 | Arena Editor Tool | Once 2–3 arenas have been hand-authored and the schema is stable |
-| v1.2 | Obstacle Gauntlet event module + Gauntlet Arena JSON | Third event type, completes the v1 spec's variety claim |
+| ✅ MVP (S7) | Obstacle Gauntlet Event Module + Arena-03 JSON | Shipped Sprint 7 (S7-04+S7-05+S7-06). Three trap types + three staged culls per game-concept §3. |
 | v1.2 | Leaderboard + ELO + `/leaderboard` page | Enough events in the system to produce meaningful rankings |
 | v1.2 | `/robot/:id` profile page + trait radar chart | Leaderboard creates demand for per-robot detail views |
 | v1.2 | Event Lifecycle State Machine + Countdown Timer | Multiple events per rotation + scheduled showtime are meaningful |

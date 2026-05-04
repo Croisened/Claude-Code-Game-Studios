@@ -23,7 +23,8 @@ function Root() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  const isAppRoute = hash === '#peek' || hash === '#peek-maze';
+  const isAppRoute =
+    hash === '#peek' || hash === '#peek-maze' || hash === '#peek-gauntlet';
   if (import.meta.env.DEV) {
     return hash === '#landing' ? <Landing /> : <App />;
   }
