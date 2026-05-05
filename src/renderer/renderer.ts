@@ -43,6 +43,11 @@ const SCENE_BACKGROUND = '#2a3548';
 const GROUND_COLOR = 0x2a3548;        // matches bg so the horizon blends
 const DEFAULT_GROUND_SIZE = 80;
 const GROUND_ROUGHNESS = 0.95;
+/** Vertical thickness applied to the holed ground path. Matches
+ *  BRIDGE_PLANK_HEIGHT in arena-visuals/gauntlet-traps.ts so the visible
+ *  cross-section at pit/bridge cutouts reads at the same scale as the
+ *  bridge planks. Top face sits at y=0; the slab extrudes down to -thickness. */
+const GROUND_HOLE_THICKNESS = 0.25;
 const AMBIENT_INTENSITY = 0.9;
 const SUN_INTENSITY = 1.4;
 const SUN_POSITION: readonly [number, number, number] = [20, 40, 20];
@@ -173,10 +178,13 @@ export interface CreateRendererOptions {
   backgroundColor?: THREE.ColorRepresentation;
   /**
    * Optional rectangular holes cut out of the ground plane. When non-empty
-   * the ground is built from `THREE.ShapeGeometry` instead of a flat
-   * `PlaneGeometry`; otherwise the existing PlaneGeometry path is kept
-   * (so the default sprint-race / maze ground is unchanged). Used by the
-   * gauntlet to remove floor under pit-trap doors.
+   * the ground is built as a Group: a flat top cap (`ShapeGeometry` with
+   * holes) plus an outer-perimeter rim that gives the slab cross-section
+   * thickness (GROUND_HOLE_THICKNESS) at the world boundary. The holes
+   * themselves get NO side walls — when the gauntlet's trap doors swing
+   * open the camera sees through to the void, not at an exposed hole-wall
+   * remnant. Otherwise the existing PlaneGeometry path is kept (so the
+   * default sprint-race / maze ground is unchanged).
    */
   groundHoles?: readonly GroundHole[];
 }
@@ -264,14 +272,30 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
       color: opts.groundColor ?? GROUND_COLOR,
       roughness: GROUND_ROUGHNESS,
     });
-    const groundGeom: THREE.BufferGeometry =
-      opts.groundHoles && opts.groundHoles.length > 0
-        ? buildGroundGeometryWithHoles(groundExtents, opts.groundHoles)
-        : new THREE.PlaneGeometry(groundExtents.sizeX, groundExtents.sizeZ);
-    const ground = new THREE.Mesh(groundGeom, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(groundExtents.centerX, 0, groundExtents.centerZ);
-    s.add(ground);
+    const hasHoles = !!opts.groundHoles && opts.groundHoles.length > 0;
+    if (hasHoles) {
+      // Hole-aware path: flat top cap (so trap doors flush with the floor
+      // see no exposed hole walls when they swing open) + an explicit
+      // outer-perimeter rim that gives the slab cross-section thickness
+      // visible at the world boundary.
+      const groundGroup = buildGroundWithHoles(
+        groundExtents,
+        opts.groundHoles!,
+        groundMat,
+      );
+      groundGroup.rotation.x = -Math.PI / 2;
+      groundGroup.position.set(groundExtents.centerX, 0, groundExtents.centerZ);
+      s.add(groundGroup);
+    } else {
+      const groundGeom = new THREE.PlaneGeometry(
+        groundExtents.sizeX,
+        groundExtents.sizeZ,
+      );
+      const ground = new THREE.Mesh(groundGeom, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.set(groundExtents.centerX, 0, groundExtents.centerZ);
+      s.add(ground);
+    }
 
     return s;
   }
@@ -553,20 +577,37 @@ function disposeMaterial(mat: THREE.Material): void {
 }
 
 /**
- * Build a ground geometry as a single rectangular Shape with rectangular
- * holes punched out. Vertices are emitted in the shape's local XY plane;
- * the caller applies the same `rotation.x = -π/2` and `position` as the
- * unholed PlaneGeometry path, so shape Y maps to world Z and the ground
- * lands in the same world-space slot.
+ * Build a holed-ground rig as a Group containing two meshes:
  *
- * Outer rect winds CCW; holes wind CW (Three.js Shape convention).
- * Hole rectangles are converted from world XZ to shape-local by
- * subtracting the ground centre.
+ *   1. A flat **top cap** (`ShapeGeometry` of the outer rect with the hole
+ *      paths punched out) at local z=0. With NO extrusion, the holes have
+ *      no side walls — when a gauntlet trap door swings open the camera
+ *      sees straight through to the void below instead of looking at an
+ *      exposed vertical hole-wall remnant.
+ *
+ *   2. An explicit **outer-perimeter rim** (4 quads) extruding from local
+ *      z=0 down to z=-GROUND_HOLE_THICKNESS along ONLY the outer rectangle.
+ *      Gives the slab the visible cross-section thickness at the world
+ *      boundary that motivated the original thickness pass, without
+ *      generating hole walls.
+ *
+ * Caller applies `rotation.x = -π/2` and the centre offset to the returned
+ * Group, so local +Z → world +Y (rim extrudes downward) and the cap lands
+ * at world Y=0.
+ *
+ * Trade-off: the bottom of the slab is intentionally NOT capped — looking
+ * up through a hole from below would reveal the underside of the top cap.
+ * The gauntlet camera never goes below the floor, and the abyss-floor
+ * grove in `gauntlet-traps.ts` covers the downward sightlines.
  */
-function buildGroundGeometryWithHoles(
+function buildGroundWithHoles(
   groundExtents: Required<GroundExtents>,
   holes: readonly GroundHole[],
-): THREE.ShapeGeometry {
+  material: THREE.Material,
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'ground-with-holes';
+
   const halfX = groundExtents.sizeX / 2;
   const halfZ = groundExtents.sizeZ / 2;
   const shape = new THREE.Shape();
@@ -589,5 +630,80 @@ function buildGroundGeometryWithHoles(
     path.closePath();
     shape.holes.push(path);
   }
-  return new THREE.ShapeGeometry(shape);
+  const topGeom = new THREE.ShapeGeometry(shape);
+  const top = new THREE.Mesh(topGeom, material);
+  top.receiveShadow = true;
+  group.add(top);
+
+  const rimGeom = buildOuterRimGeometry(halfX, halfZ, GROUND_HOLE_THICKNESS);
+  const rim = new THREE.Mesh(rimGeom, material);
+  group.add(rim);
+
+  return group;
+}
+
+/**
+ * Build the 4-quad rim that gives the holed ground its outer-edge
+ * thickness. Quads sit in shape-local space (XY plane is the floor,
+ * +Z is "up" before the caller rotates the geometry); each quad spans
+ * one outer edge of the rectangle from z=0 down to z=-thickness.
+ *
+ * Vertex windings are CCW when viewed from OUTSIDE the slab so the
+ * default front-face culling shows the visible outer face. If a future
+ * camera angle exposes the inner faces (e.g., a top-down debug cam),
+ * flip the material to DoubleSide rather than re-deriving windings.
+ */
+function buildOuterRimGeometry(
+  halfX: number,
+  halfZ: number,
+  thickness: number,
+): THREE.BufferGeometry {
+  // Outer-rect corners at the top (z=0) and bottom (z=-thickness) of the rim.
+  // Subscript T = top edge, B = bottom edge.
+  const A_T: [number, number, number] = [-halfX, -halfZ, 0];
+  const B_T: [number, number, number] = [halfX, -halfZ, 0];
+  const C_T: [number, number, number] = [halfX, halfZ, 0];
+  const D_T: [number, number, number] = [-halfX, halfZ, 0];
+  const A_B: [number, number, number] = [-halfX, -halfZ, -thickness];
+  const B_B: [number, number, number] = [halfX, -halfZ, -thickness];
+  const C_B: [number, number, number] = [halfX, halfZ, -thickness];
+  const D_B: [number, number, number] = [-halfX, halfZ, -thickness];
+
+  const positions: number[] = [];
+  const indices: number[] = [];
+
+  // South wall along edge AB (local y=-halfZ) — outward normal is local -Y.
+  // CCW from outside (looking in +Y direction): A_B, B_B, B_T, A_T.
+  pushQuad(positions, indices, A_B, B_B, B_T, A_T);
+  // East wall along edge BC (local x=+halfX) — outward normal is local +X.
+  // CCW from outside (looking in -X direction): B_B, C_B, C_T, B_T.
+  pushQuad(positions, indices, B_B, C_B, C_T, B_T);
+  // North wall along edge CD (local y=+halfZ) — outward normal is local +Y.
+  // CCW from outside (looking in -Y direction): C_B, D_B, D_T, C_T.
+  pushQuad(positions, indices, C_B, D_B, D_T, C_T);
+  // West wall along edge DA (local x=-halfX) — outward normal is local -X.
+  // CCW from outside (looking in +X direction): D_B, A_B, A_T, D_T.
+  pushQuad(positions, indices, D_B, A_B, A_T, D_T);
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+  return geom;
+}
+
+function pushQuad(
+  positions: number[],
+  indices: number[],
+  v0: readonly [number, number, number],
+  v1: readonly [number, number, number],
+  v2: readonly [number, number, number],
+  v3: readonly [number, number, number],
+): void {
+  const i0 = positions.length / 3;
+  positions.push(v0[0], v0[1], v0[2]);
+  positions.push(v1[0], v1[1], v1[2]);
+  positions.push(v2[0], v2[1], v2[2]);
+  positions.push(v3[0], v3[1], v3[2]);
+  indices.push(i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3);
 }

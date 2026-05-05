@@ -50,11 +50,11 @@ describe('loadArena — happy path (AC3, AC4)', () => {
     expect(arena.startGrid).toEqual({
       lanes: 17,
       rows: 5,
-      laneSpacing: 2.0,
-      // 6.0 spacing: stagger of 24 m between front and back row, enough
+      laneSpacing: 2.3,
+      // 7.0 spacing: stagger of 28 m between front and back row, enough
       // for shuffled back-row draws to flip the winner past the top
       // robot's structural speed lead.
-      rowSpacing: 6.0,
+      rowSpacing: 7.0,
     });
     expect(arena.gates).toHaveLength(3);
     expect(arena.gates[0]).toEqual({ name: 'gate_a', x: 80, cullToCount: 28 });
@@ -94,7 +94,8 @@ describe('getStartPosition (AC7, AC8, AC9)', () => {
   it('id 0 is the leftmost front-row position (AC7)', async () => {
     const p = getStartPosition(await loadArena01(), 0);
     expect(p.x).toBeCloseTo(0, 9);
-    expect(p.z).toBeCloseTo(-16, 9);
+    // Lane 0 → z = -8 * laneSpacing = -8 * 2.3 = -18.4.
+    expect(p.z).toBeCloseTo(-18.4, 9);
   });
 
   it('id 8 is the centerline front-row position (AC7)', async () => {
@@ -105,16 +106,16 @@ describe('getStartPosition (AC7, AC8, AC9)', () => {
 
   it('slot 17 is the leftmost second-row position (AC7)', async () => {
     const p = getStartPosition(await loadArena01(), 17);
-    // Second row → x = -rowSpacing = -6 (rowSpacing 6.0 in arena-01).
-    expect(p.x).toBeCloseTo(-6, 9);
-    expect(p.z).toBeCloseTo(-16, 9);
+    // Second row → x = -rowSpacing = -7 (rowSpacing 7.0 in arena-01).
+    expect(p.x).toBeCloseTo(-7, 9);
+    expect(p.z).toBeCloseTo(-18.4, 9);
   });
 
   it('slot 84 is the rightmost back-row position (AC7)', async () => {
     const p = getStartPosition(await loadArena01(), 84);
-    // Row 4 (last) → x = -4 * rowSpacing = -24.
-    expect(p.x).toBeCloseTo(-24, 9);
-    expect(p.z).toBeCloseTo(16, 9);
+    // Row 4 (last) → x = -4 * rowSpacing = -28.
+    expect(p.x).toBeCloseTo(-28, 9);
+    expect(p.z).toBeCloseTo(18.4, 9);
   });
 
   it('covers the full roster with no duplicate positions (AC8)', async () => {
@@ -125,8 +126,8 @@ describe('getStartPosition (AC7, AC8, AC9)', () => {
       expect(Number.isFinite(p.x)).toBe(true);
       expect(Number.isFinite(p.z)).toBe(true);
       expect(p.x).toBeLessThanOrEqual(0);
-      expect(p.z).toBeGreaterThanOrEqual(-16);
-      expect(p.z).toBeLessThanOrEqual(16);
+      expect(p.z).toBeGreaterThanOrEqual(-18.4);
+      expect(p.z).toBeLessThanOrEqual(18.4);
       const key = `${p.x},${p.z}`;
       expect(seen.has(key)).toBe(false);
       seen.add(key);

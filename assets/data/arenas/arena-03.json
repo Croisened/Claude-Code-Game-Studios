@@ -7,8 +7,8 @@
   "startGrid": {
     "lanes": 11,
     "rows": 8,
-    "laneSpacing": 1.5,
-    "rowSpacing": 4.0
+    "laneSpacing": 1.7,
+    "rowSpacing": 5.5
   },
   "gauntletConfig": {
     "pitZones": [

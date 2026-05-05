@@ -70,10 +70,10 @@ const GAUNTLET_GROUND_COLOR = 0x050505;
  * floor before the gauntlet "begins". Race-direction (X) only — the
  * lateral (Z) ground extent matches `arena.width` exactly so falling
  * sideways drops the robot into the void. Sized to comfortably cover the
- * full start grid (8 rows × 4 m row-spacing puts the back row at x=-28)
- * with margin so no robot spawns over the abyss.
+ * full start grid (8 rows × 5.5 m row-spacing puts the back row at
+ * x=-38.5) with margin so no robot spawns over the abyss.
  */
-const GAUNTLET_GROUND_PAD_X = 36;
+const GAUNTLET_GROUND_PAD_X = 42;
 
 /** Peek mode hides the dev HUD and shows a minimal training caption +
  *  back link. Triggered by any of the `#peek*` hashes from Landing. */

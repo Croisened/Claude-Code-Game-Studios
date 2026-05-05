@@ -155,11 +155,31 @@ export function getMazeFinishTreeWorldPos(
   };
 }
 
-export function createMazeFinishTree(layout: MazeLayout): THREE.Group {
-  const group = new THREE.Group();
-  group.name = 'maze-finish-tree';
+/**
+ * Optional per-instance variation. Used by the gauntlet's grove to give
+ * 24 trees a hand-scattered feel without changing the maze finish tree's
+ * canonical look (which uses defaults: scale=1, yawY=0).
+ */
+export interface OrangeTreeOptions {
+  /** Uniform scale applied to the entire tree (default 1). */
+  readonly scale?: number;
+  /** Y-axis rotation in radians, applied to the group (default 0). */
+  readonly yawY?: number;
+}
 
-  const { x, z } = getMazeFinishTreeWorldPos(layout);
+/**
+ * Build a low-poly orange tree at the local origin: trunk base sits at
+ * local y=0 so callers can position the returned Group directly on a
+ * ground plane. Used by the maze finish marker and the gauntlet's
+ * abyss-floor grove (sharing visual identity across arenas).
+ *
+ * Anatomy and rationale identical to `createMazeFinishTree` (see history)
+ * — extracted so multiple arenas can spawn trees without dragging in a
+ * MazeLayout dependency.
+ */
+export function createOrangeTree(opts: OrangeTreeOptions = {}): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'orange-tree';
 
   // Trunk — 8-segment radial cylinder for low-poly facets.
   const trunkGeom = new THREE.CylinderGeometry(
@@ -175,14 +195,14 @@ export function createMazeFinishTree(layout: MazeLayout): THREE.Group {
     flatShading: true,
   });
   const trunk = new THREE.Mesh(trunkGeom, trunkMat);
-  trunk.position.set(x, TRUNK_HEIGHT / 2, z);
+  trunk.position.set(0, TRUNK_HEIGHT / 2, 0);
   trunk.castShadow = true;
   trunk.receiveShadow = true;
   group.add(trunk);
 
   // Canopy — icosahedron at subdivision 0 (20 faces) sitting just above
-  // the trunk top. Center is offset upward so the canopy doesn't bury
-  // its lower hemisphere inside the trunk.
+  // the trunk top. Center offset upward so the canopy doesn't bury its
+  // lower hemisphere inside the trunk.
   const canopyCenterY = TRUNK_HEIGHT + CANOPY_RADIUS * 0.55;
   const canopyGeom = new THREE.IcosahedronGeometry(CANOPY_RADIUS, 0);
   const canopyMat = new THREE.MeshStandardMaterial({
@@ -192,11 +212,11 @@ export function createMazeFinishTree(layout: MazeLayout): THREE.Group {
     flatShading: true,
   });
   const canopy = new THREE.Mesh(canopyGeom, canopyMat);
-  canopy.position.set(x, canopyCenterY, z);
+  canopy.position.set(0, canopyCenterY, 0);
   canopy.castShadow = true;
   group.add(canopy);
 
-  // Oranges — share geometry + material across all 8.
+  // Oranges — share geometry + material across all 14.
   const orangeGeom = new THREE.IcosahedronGeometry(ORANGE_RADIUS, 0);
   const orangeMat = new THREE.MeshStandardMaterial({
     color: ORANGE_COLOR,
@@ -210,14 +230,29 @@ export function createMazeFinishTree(layout: MazeLayout): THREE.Group {
   // embedded in the foliage, not floating off it.
   const fruitR = CANOPY_RADIUS * 0.92;
   for (const [theta, phi] of ORANGE_POSITIONS) {
-    const ox = x + fruitR * Math.sin(phi) * Math.cos(theta);
+    const ox = fruitR * Math.sin(phi) * Math.cos(theta);
     const oy = canopyCenterY + fruitR * Math.cos(phi);
-    const oz = z + fruitR * Math.sin(phi) * Math.sin(theta);
+    const oz = fruitR * Math.sin(phi) * Math.sin(theta);
     const orange = new THREE.Mesh(orangeGeom, orangeMat);
     orange.position.set(ox, oy, oz);
     orange.castShadow = true;
     group.add(orange);
   }
 
+  if (opts.scale !== undefined && opts.scale !== 1) {
+    group.scale.setScalar(opts.scale);
+  }
+  if (opts.yawY !== undefined && opts.yawY !== 0) {
+    group.rotation.y = opts.yawY;
+  }
+
   return group;
+}
+
+export function createMazeFinishTree(layout: MazeLayout): THREE.Group {
+  const { x, z } = getMazeFinishTreeWorldPos(layout);
+  const tree = createOrangeTree();
+  tree.name = 'maze-finish-tree';
+  tree.position.set(x, 0, z);
+  return tree;
 }

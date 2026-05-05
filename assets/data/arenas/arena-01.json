@@ -6,8 +6,8 @@
   "startGrid": {
     "lanes": 17,
     "rows": 5,
-    "laneSpacing": 2.0,
-    "rowSpacing": 6.0
+    "laneSpacing": 2.3,
+    "rowSpacing": 7.0
   },
   "gates": [
     { "name": "gate_a", "x": 80,  "cullToCount": 28 },
