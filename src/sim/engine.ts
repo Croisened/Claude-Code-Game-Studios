@@ -140,6 +140,28 @@ export interface SimResult {
   readonly winnerId: number | null;
 }
 
+// Per-slot start-pose jitter ranges, expressed as fractions of the
+// arena's grid spacing. Breaks the visual "rows of robots" pattern at
+// race start without rng (deterministic from slotId). dx is larger
+// because robots have more longitudinal headroom (rowSpacing >>
+// laneSpacing); dz stays well inside the lane to avoid neighbour
+// overlap. Tuned 2026-05-05 after Sprint 7 grid-look feedback.
+const START_JITTER_DX_FRAC = 0.30;
+const START_JITTER_DZ_FRAC = 0.25;
+
+// Mulberry32-style integer mixer. Given a 32-bit seed, returns a
+// uniform [0, 1). Used purely for visual jitter, not sim mechanics —
+// determinism is required (same slot → same jitter every run).
+function slotJitter01(slotId: number, salt: number): number {
+  let h = (Math.imul(slotId, 2654435761) + Math.imul(salt, 1597334677)) >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 2246822507);
+  h ^= h >>> 13;
+  h = Math.imul(h, 3266489909);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
 /**
  * Default `EventModule.init` helper. Places each robot at its arena start
  * grid slot, all active, facing +X (yaw = 0). Modules typically delegate
@@ -150,6 +172,11 @@ export interface SimResult {
  * `shuffledStartSlots` (`src/sim/arena.ts`) so race-to-race starting
  * positions vary with the seed. Robot identity (id, traits, skin) is
  * unchanged — only its starting (x, z) shifts.
+ *
+ * A deterministic per-slot (dx, dz) jitter is layered on top of the
+ * canonical grid position so the start pack doesn't read as a uniform
+ * row-and-column lattice. Same slot → same jitter every run; no rng
+ * dependency.
  *
  * Validation: `slotForId.length` must equal `roster.length`.
  */
@@ -163,15 +190,19 @@ export function buildStartPoses(
       `buildStartPoses: slotForId length (${slotForId.length}) must equal roster length (${roster.length})`,
     );
   }
+  const dxRange = arena.startGrid.rowSpacing * START_JITTER_DX_FRAC;
+  const dzRange = arena.startGrid.laneSpacing * START_JITTER_DZ_FRAC;
   const poses: RobotPose[] = new Array(roster.length);
   for (let i = 0; i < roster.length; i++) {
     const slot = slotForId ? slotForId[i] : i;
     const { x, z } = getStartPosition(arena, slot);
+    const dx = (slotJitter01(slot, 0x9e3779b1) - 0.5) * 2 * dxRange;
+    const dz = (slotJitter01(slot, 0x85ebca77) - 0.5) * 2 * dzRange;
     poses[i] = {
       id: i,
-      x,
+      x: x + dx,
       y: 0,
-      z,
+      z: z + dz,
       yaw: 0,
       active: true,
     };

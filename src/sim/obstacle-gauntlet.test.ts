@@ -111,8 +111,21 @@ describe('obstacle-gauntlet determinism', () => {
 
 describe('obstacle-gauntlet trap mechanics', () => {
   it('pit_fall eliminations occur within pit zone x-range', () => {
+    // Production arena-03 has no pit zones (Sprint 8: replaced with
+    // hammers). Build a synthetic variant with a pit zone so the
+    // pit-fall sim phase stays under test — the code paths remain in
+    // the engine for a future obstacle revival.
+    const base = arena03();
+    const arenaWithPit: Arena = Object.freeze({
+      ...base,
+      gauntletConfig: Object.freeze({
+        pitZones: Object.freeze([Object.freeze({ xStart: 60, xEnd: 78 })]),
+        hammers: base.gauntletConfig!.hammers,
+        bridge: base.gauntletConfig!.bridge,
+      }),
+    });
     // High-speed, low-Doubter roster maximises pit deaths so we get a
-    // wide sample. Pit zone at [60, 78] per arena-03.
+    // wide sample.
     const roster = makeRoster(85, (_id, t) => ({
       ...t,
       fullSend: 80,
@@ -122,7 +135,7 @@ describe('obstacle-gauntlet trap mechanics', () => {
     const result = runSim({
       seed: 1,
       roster,
-      arena: arena03(),
+      arena: arenaWithPit,
       eventModule: createObstacleGauntletModule(),
       maxTicks: 7200,
       recordPoseFrames: true,

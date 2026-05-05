@@ -11,11 +11,11 @@
     "rowSpacing": 5.5
   },
   "gauntletConfig": {
-    "pitZones": [
-      { "xStart": 60, "xEnd": 78 }
-    ],
+    "pitZones": [],
     "hammers": [
-      { "x": 110, "killRadius": 2.0, "cycleTicks": 80, "downStartTick": 0, "downEndTick": 20 },
+      { "x": 64,  "killRadius": 2.0, "cycleTicks": 80, "downStartTick": 12, "downEndTick": 32 },
+      { "x": 82,  "killRadius": 2.0, "cycleTicks": 80, "downStartTick": 40, "downEndTick": 60 },
+      { "x": 110, "killRadius": 2.0, "cycleTicks": 80, "downStartTick": 0,  "downEndTick": 20 },
       { "x": 128, "killRadius": 2.0, "cycleTicks": 80, "downStartTick": 28, "downEndTick": 48 },
       { "x": 146, "killRadius": 2.0, "cycleTicks": 80, "downStartTick": 56, "downEndTick": 76 }
     ],
