@@ -18,16 +18,21 @@
  * `renderer.addToScene` / disposal traversal.
  *
  * Sim authority: hammer rotation phase is derived from the sim tick
- * via `(tickFloat % cycleTicks) / cycleTicks` — the same predicate the
- * sim uses for `isHammerDown`. The renderer NEVER sets hammer
- * positions out of sim-driven phase. Bridge crumble line position
- * also derives from `(tickFloat - bridgeEnteredTick) * crumbleSpeedMps`
- * — pure functions of sim state.
+ * via the shared `hammerArmAngle` in `@/sim/hammer-geometry`, the
+ * same function the sim uses for the kill-zone test. The renderer
+ * NEVER sets hammer positions out of sim-driven phase. Bridge crumble
+ * line position is supplied by the App from a `bridge_crumble` sim
+ * event so the visual planks drop in lock-step with `bridge_fell`
+ * eliminations.
  */
 import * as THREE from 'three';
 import type { Arena, BridgeSpec, HammerSpec, PitZone } from '@/sim/arena';
 import { createOrangeTree } from '@/arena-visuals/maze-walls';
 import { createRng } from '@/sim/rng';
+import {
+  HAMMER_ARM_LENGTH_M,
+  hammerArmAngle,
+} from '@/sim/hammer-geometry';
 
 // --- Colours / dimensions -----------------------------------------
 
@@ -63,6 +68,27 @@ const HAMMER_PILLAR_HEIGHT = 12.8;
  * app shell can wire the pit-fall animation to the same value.
  */
 export const GAUNTLET_ABYSS_DEPTH_M = 60;
+
+/**
+ * How long (in sim ticks at 60Hz) a fallen robot takes to drop from
+ * ground level to the abyss floor. ~500ms reads as "lost to the void"
+ * without lingering. Exported so the app shell can drive the per-robot
+ * Y-drop animation against the same timeline the bridge crumble uses.
+ */
+export const GAUNTLET_PIT_DROP_DURATION_TICKS = 30;
+
+/** Padding past the start grid so the start band has floor under it
+ *  before the gauntlet "begins". Exported to keep the App's ground-extent
+ *  computation aligned with the trap-visuals' grove placement. */
+export const GAUNTLET_GROUND_PAD_X = 42;
+
+/** Scene background colour used when an obstacle-gauntlet arena is loaded
+ *  — near-black so the narrow course reads as a path floating in a void. */
+export const GAUNTLET_BACKGROUND_COLOR = '#000000';
+
+/** Ground-plane base colour for the gauntlet. Pulled near-black; faint
+ *  warmth keeps the floor from disappearing entirely under dark robots. */
+export const GAUNTLET_GROUND_COLOR = 0x050505;
 const HAMMER_PILLAR_DEPTH_BELOW = GAUNTLET_ABYSS_DEPTH_M;
 const HAMMER_PILLAR_RADIUS = 0.45;
 const HAMMER_PILLAR_COLOR = 0x4a4f5b;
@@ -79,16 +105,14 @@ const HAMMER_PILLAR_OUTSET = 2.0;
 const HAMMER_BEAM_HEIGHT = 0.5;
 const HAMMER_BEAM_DEPTH = 0.6;
 const HAMMER_BEAM_COLOR = 0x36373d;
-const HAMMER_ARM_LENGTH = 11.0;
+// Arm length and max swing angle live in @/sim/hammer-geometry so the
+// renderer and sim share one source of truth.
+const HAMMER_ARM_LENGTH = HAMMER_ARM_LENGTH_M;
 const HAMMER_ARM_THICKNESS = 0.55;
 const HAMMER_HEAD_SIZE = 1.2;
 const HAMMER_HEAD_COLOR = 0xa53a2a; // rusty industrial red
 const HAMMER_PIVOT_Y = 11.6; // matches beam center, near the doubled pillar top
 const HAMMER_ARM_COLOR = 0x36373d;
-/** Max swing angle from vertical-down. < π/2 keeps the head BELOW the
- *  cross-beam — at 0.48π the arm reaches ±10.98 m from the pivot at the
- *  extreme of each swing, fully inside the gallows posts at z = ±11. */
-const HAMMER_MAX_SWING_ANGLE = Math.PI * 0.48;
 
 const BRIDGE_PLANK_COUNT = 24;
 const BRIDGE_PLANK_THICKNESS = 0.35;
@@ -388,33 +412,8 @@ function createHammer(
   return { group, handle: { spec, arm: pivot } };
 }
 
-/**
- * Compute the hammer arm's rotation (radians around X) at a given sim
- * tick. The arm pivots at the centre of the cross-beam and swings as a
- * **true pendulum** in the YZ plane (perpendicular to robot motion),
- * passing through angle = 0 (straight down, kill posture) at the centre
- * of the sim's down window and reaching ±HAMMER_MAX_SWING_ANGLE at the
- * extremes of each swing. The swing is symmetric: arm goes down →
- * +max → down → -max → down each cycle, so the head sweeps evenly to
- * both sides of the gallows posts.
- *
- * Sim/visual coupling: the sim's single down-window aligns with the
- * FIRST zero-crossing per cycle (offset=0). The arm passes through 0
- * a second time at offset=0.5 — that crossing is visually "down" but
- * the sim does not register it as a kill. This is a v1 cosmetic
- * tradeoff; viewers see a proper pendulum motion while the sim retains
- * its simple one-window-per-cycle kill model.
- */
-function hammerArmAngle(spec: HammerSpec, tickFloat: number): number {
-  const phase =
-    ((tickFloat % spec.cycleTicks) + spec.cycleTicks) % spec.cycleTicks;
-  const downCenter = (spec.downStartTick + spec.downEndTick) / 2;
-  const offset =
-    ((phase - downCenter + spec.cycleTicks) % spec.cycleTicks) / spec.cycleTicks;
-  // Pendulum: 0 → +max → 0 → -max → 0 over the cycle, with the first
-  // zero crossing at offset = 0 (i.e., at the sim's downCenter).
-  return HAMMER_MAX_SWING_ANGLE * Math.sin(2 * Math.PI * offset);
-}
+// hammerArmAngle lives in @/sim/hammer-geometry — see its docs for the
+// pendulum formula and the sim/visual offset=0.5 cosmetic tradeoff.
 
 // --- Crumbling bridge --------------------------------------------
 

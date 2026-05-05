@@ -21,8 +21,7 @@
     ],
     "bridge": {
       "xStart": 175,
-      "xEnd": 220,
-      "crumbleSpeedMps": 7.0
+      "xEnd": 220
     }
   }
 }

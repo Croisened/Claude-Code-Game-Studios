@@ -33,20 +33,14 @@ import {
   type TickContext,
   type TickResult,
 } from '@/sim/engine';
-import { shuffledStartSlots, type Arena, type BridgeSpec, type HammerSpec, type PitZone } from '@/sim/arena';
+import { shuffledStartSlots, type Arena, type HammerSpec, type PitZone } from '@/sim/arena';
+import { hammerHeadZ, isHammerDown } from '@/sim/hammer-geometry';
 import type { RobotRoster } from '@/sim/robot-roster';
 
 const ELIM_REASON_PIT_FALL = 'pit_fall';
 const ELIM_REASON_HAMMER_STRIKE = 'hammer_strike';
 const ELIM_REASON_BRIDGE_FELL = 'bridge_fell';
 const ELIM_REASON_RACE_OVER = 'race_over';
-
-// Hammer arm geometry — must stay in sync with HAMMER_ARM_LENGTH and
-// HAMMER_MAX_SWING_ANGLE in gauntlet-traps.ts. The sim derives the head's
-// world-space XZ position from these values; the renderer draws the arm
-// using the same constants, so the kill zone tracks the visual head exactly.
-const HAMMER_ARM_LENGTH_M = 11.0;
-const HAMMER_MAX_SWING_RAD = Math.PI * 0.48;
 
 interface GauntletState {
   /**
@@ -69,31 +63,9 @@ function initState(): GauntletState {
   };
 }
 
-/**
- * Returns true if the hammer is currently in its "down" (deadly) phase
- * at the given sim tick. Uses pure modular arithmetic — no rng — so
- * the renderer can read the same predicate to drive the visual
- * hammer mesh's rotation.
- */
-function isHammerDown(hammer: HammerSpec, tick: number): boolean {
-  const phase = ((tick % hammer.cycleTicks) + hammer.cycleTicks) % hammer.cycleTicks;
-  return phase >= hammer.downStartTick && phase < hammer.downEndTick;
-}
-
-/**
- * Compute the hammer arm's angle (radians, rotation around world X) at the
- * given sim tick. Mirrors hammerArmAngle() in gauntlet-traps.ts exactly —
- * keep both in sync when changing the swing formula.
- *
- * Returns 0 at the centre of the down window (arm straight down, head at
- * z = 0). Positive angle → head displaced in -Z; negative → +Z.
- */
-function hammerArmAngle(spec: HammerSpec, tick: number): number {
-  const phase = ((tick % spec.cycleTicks) + spec.cycleTicks) % spec.cycleTicks;
-  const downCenter = (spec.downStartTick + spec.downEndTick) / 2;
-  const offset =
-    ((phase - downCenter + spec.cycleTicks) % spec.cycleTicks) / spec.cycleTicks;
-  return HAMMER_MAX_SWING_RAD * Math.sin(2 * Math.PI * offset);
+interface Elimination {
+  robotId: number;
+  reason: string;
 }
 
 /**
@@ -112,8 +84,6 @@ function hammerArmAngle(spec: HammerSpec, tick: number): number {
  * hammer cycles up.
  *
  * Floor at 0 — max-caution robots fully stop and wait for the cycle.
- * They make zero progress during a down phase but resume at full
- * speed the moment it cycles up. Mid-caution robots crawl through.
  */
 function hammerSlowdownFactor(
   hammers: readonly HammerSpec[],
@@ -148,27 +118,21 @@ function inPitZone(pitZones: readonly PitZone[], poseX: number): boolean {
   return false;
 }
 
-function advanceMotion(
+// ---- Phase A: motion + chaos jitter + hammer-lookahead slowdown.
+// Each active robot consumes exactly ONE rng() draw here for jitter.
+// Pit-fall rolls happen in Phase B with a separate (conditional) draw.
+function phaseMotion(
   ctx: TickContext,
   hammers: readonly HammerSpec[],
-  pitZones: readonly PitZone[],
-  state: GauntletState,
-): { eliminations: { robotId: number; reason: string }[]; finishes: { robotId: number }[] } {
+): void {
   const k = CONFIG.sim.gauntletRace;
   const dt = ctx.dtSeconds;
-  const arenaLength = ctx.arena.length;
   const halfWidth = ctx.arena.width / 2 - k.lateralBoundMargin;
   const sepR = k.separationRadius;
   const sepRSq = sepR * sepR;
   const sepForce = k.separationForceMps;
   const sepEps = k.separationCoincidentEps;
 
-  const eliminations: { robotId: number; reason: string }[] = [];
-  const finishes: { robotId: number }[] = [];
-
-  // ---- Phase A: motion + chaos jitter + hammer-lookahead slowdown.
-  // Each active robot consumes exactly ONE rng() draw here for jitter.
-  // Pit-fall rolls happen in Phase B with a separate (conditional) draw.
   for (let id = 0; id < ctx.poses.length; id++) {
     const pose = ctx.poses[id];
     if (!pose.active) continue;
@@ -186,8 +150,6 @@ function advanceMotion(
     const slow = hammerSlowdownFactor(hammers, pose.x, stat.caution, ctx.tick);
     const speed = baseSpeed * slow;
 
-    // Forward motion along +X. Bounded by the finish line; robots do
-    // not overshoot — finish detection handles the crossing.
     pose.x += speed * dt;
 
     // Boids-style lateral separation. Same id-ascending pattern as
@@ -214,14 +176,20 @@ function advanceMotion(
     if (pose.z > halfWidth) pose.z = halfWidth;
     if (pose.z < -halfWidth) pose.z = -halfWidth;
 
-    // Yaw points along +X (sprint convention). Forward-only motion in
-    // gauntlet — no yaw variation in v1.
     pose.yaw = 0;
   }
+}
 
-  // ---- Phase B: pit-zone fall rolls. One additional rng() draw per
-  // active robot CURRENTLY in a pit zone. Outside the zone: no draw.
-  // Iteration order is id-ascending so the rng sequence is deterministic.
+// ---- Phase B: pit-zone fall rolls. One additional rng() draw per
+// active robot CURRENTLY in a pit zone. Outside the zone: no draw.
+// Iteration order is id-ascending so the rng sequence is deterministic.
+function phasePitFalls(
+  ctx: TickContext,
+  pitZones: readonly PitZone[],
+  eliminations: Elimination[],
+  eliminated: Set<number>,
+): void {
+  const k = CONFIG.sim.gauntletRace;
   for (let id = 0; id < ctx.poses.length; id++) {
     const pose = ctx.poses[id];
     if (!pose.active) continue;
@@ -231,84 +199,113 @@ function advanceMotion(
     const pFall = k.pitFallRatePerTick * (1 - stat.caution * k.cautionPitSafety);
     if (u < pFall) {
       eliminations.push({ robotId: id, reason: ELIM_REASON_PIT_FALL });
+      eliminated.add(id);
     }
   }
+}
 
-  // ---- Phase C: hammer-strike eliminations. Kill zone: 2D XZ circle of
-  // `killRadius` centred on the hammer head's world-space XZ position.
-  // The head always sits at x = hammer.x (arm rotates in the YZ plane);
-  // its Z derives from the arm angle at the current tick, matching the
-  // rendered pendulum exactly. isHammerDown is a fast broad-phase gate —
-  // head position is only computed during the designated down window.
+// ---- Phase C: hammer-strike eliminations. Kill zone: 2D XZ circle of
+// `killRadius` centred on the hammer head's world-space XZ position.
+// `isHammerDown` is a fast broad-phase gate — head Z is only computed
+// during the designated down window.
+function phaseHammers(
+  ctx: TickContext,
+  hammers: readonly HammerSpec[],
+  eliminations: Elimination[],
+  eliminated: Set<number>,
+): void {
   for (let h = 0; h < hammers.length; h++) {
     const hammer = hammers[h];
     if (!isHammerDown(hammer, ctx.tick)) continue;
-    const angle = hammerArmAngle(hammer, ctx.tick);
-    // Head Z in world space: arm-local -Y maps to world Z under X-axis
-    // rotation. At angle = 0 the head is at z = 0; positive angle → -Z.
-    const headZ = -HAMMER_ARM_LENGTH_M * Math.sin(angle);
+    const headZ = hammerHeadZ(hammer, ctx.tick);
     const rSq = hammer.killRadius * hammer.killRadius;
     for (let id = 0; id < ctx.poses.length; id++) {
       const pose = ctx.poses[id];
       if (!pose.active) continue;
-      if (eliminationsContains(eliminations, id)) continue;
+      if (eliminated.has(id)) continue;
       const dx = pose.x - hammer.x;
       const dz = pose.z - headZ;
       if (dx * dx + dz * dz < rSq) {
         eliminations.push({ robotId: id, reason: ELIM_REASON_HAMMER_STRIKE });
+        eliminated.add(id);
       }
     }
   }
+}
 
-  // ---- Phase D: bridge crumble. The crumble line tracks the leading
-  // on-bridge robot, trailing them by `bridgeTrailMeters`. Monotonic —
-  // once a position is crumbled it stays crumbled. Robots that fall
-  // behind the leader by more than the trail distance get eliminated
-  // with `bridge_fell`. By construction the leader can never be caught,
-  // so leaders always finish; only stragglers fall.
+// ---- Phase D: bridge crumble. The crumble line tracks the leading
+// on-bridge robot, trailing them by `bridgeTrailMeters`. Monotonic —
+// once a position is crumbled it stays crumbled. By construction the
+// leader can never be caught, so leaders always finish; only stragglers
+// fall. Returns the new crumble X if it advanced this tick (so the
+// engine can emit a `bridge_crumble` event), or undefined otherwise.
+function phaseBridge(
+  ctx: TickContext,
+  state: GauntletState,
+  eliminations: Elimination[],
+  eliminated: Set<number>,
+): number | undefined {
   const bridge = ctx.arena.gauntletConfig?.bridge;
-  if (bridge !== undefined) {
-    let leaderOnBridgeX = Number.NEGATIVE_INFINITY;
-    for (let id = 0; id < ctx.poses.length; id++) {
-      const pose = ctx.poses[id];
-      if (!pose.active) continue;
-      if (
-        pose.x >= bridge.xStart &&
-        pose.x <= bridge.xEnd &&
-        pose.x > leaderOnBridgeX
-      ) {
-        leaderOnBridgeX = pose.x;
-      }
-    }
-    if (leaderOnBridgeX > Number.NEGATIVE_INFINITY) {
-      const desiredCrumbleX = leaderOnBridgeX - k.bridgeTrailMeters;
-      state.crumbleX =
-        state.crumbleX === null
-          ? desiredCrumbleX
-          : Math.max(state.crumbleX, desiredCrumbleX);
-    }
-    if (state.crumbleX !== null) {
-      for (let id = 0; id < ctx.poses.length; id++) {
-        const pose = ctx.poses[id];
-        if (!pose.active) continue;
-        if (eliminationsContains(eliminations, id)) continue;
-        if (
-          pose.x < state.crumbleX &&
-          pose.x >= bridge.xStart &&
-          pose.x <= bridge.xEnd
-        ) {
-          eliminations.push({ robotId: id, reason: ELIM_REASON_BRIDGE_FELL });
-        }
-      }
-    }
-  }
+  if (bridge === undefined) return undefined;
 
-  // ---- Phase E: finish line. The first robot whose pose.x >=
-  // arena.length wins. id-ascending tiebreak on same-tick crossings.
+  const k = CONFIG.sim.gauntletRace;
+  const previousCrumbleX = state.crumbleX;
+
+  let leaderOnBridgeX = Number.NEGATIVE_INFINITY;
   for (let id = 0; id < ctx.poses.length; id++) {
     const pose = ctx.poses[id];
     if (!pose.active) continue;
-    if (eliminationsContains(eliminations, id)) continue;
+    if (
+      pose.x >= bridge.xStart &&
+      pose.x <= bridge.xEnd &&
+      pose.x > leaderOnBridgeX
+    ) {
+      leaderOnBridgeX = pose.x;
+    }
+  }
+  if (leaderOnBridgeX > Number.NEGATIVE_INFINITY) {
+    const desiredCrumbleX = leaderOnBridgeX - k.bridgeTrailMeters;
+    state.crumbleX =
+      state.crumbleX === null
+        ? desiredCrumbleX
+        : Math.max(state.crumbleX, desiredCrumbleX);
+  }
+  if (state.crumbleX !== null) {
+    for (let id = 0; id < ctx.poses.length; id++) {
+      const pose = ctx.poses[id];
+      if (!pose.active) continue;
+      if (eliminated.has(id)) continue;
+      if (
+        pose.x < state.crumbleX &&
+        pose.x >= bridge.xStart &&
+        pose.x <= bridge.xEnd
+      ) {
+        eliminations.push({ robotId: id, reason: ELIM_REASON_BRIDGE_FELL });
+        eliminated.add(id);
+      }
+    }
+  }
+
+  if (state.crumbleX !== null && state.crumbleX !== previousCrumbleX) {
+    return state.crumbleX;
+  }
+  return undefined;
+}
+
+// ---- Phase E: finish line. The first robot whose pose.x >=
+// arena.length wins. id-ascending tiebreak on same-tick crossings.
+function phaseFinish(
+  ctx: TickContext,
+  state: GauntletState,
+  eliminations: Elimination[],
+  eliminated: Set<number>,
+  finishes: { robotId: number }[],
+): void {
+  const arenaLength = ctx.arena.length;
+  for (let id = 0; id < ctx.poses.length; id++) {
+    const pose = ctx.poses[id];
+    if (!pose.active) continue;
+    if (eliminated.has(id)) continue;
     if (pose.x >= arenaLength) {
       finishes.push({ robotId: id });
       state.finished = true;
@@ -318,24 +315,13 @@ function advanceMotion(
       for (let j = 0; j < ctx.poses.length; j++) {
         if (j === id) continue;
         if (!ctx.poses[j].active) continue;
-        if (eliminationsContains(eliminations, j)) continue;
+        if (eliminated.has(j)) continue;
         eliminations.push({ robotId: j, reason: ELIM_REASON_RACE_OVER });
+        eliminated.add(j);
       }
-      break;
+      return;
     }
   }
-
-  return { eliminations, finishes };
-}
-
-function eliminationsContains(
-  arr: readonly { robotId: number; reason: string }[],
-  id: number,
-): boolean {
-  for (let i = 0; i < arr.length; i++) {
-    if (arr[i].robotId === id) return true;
-  }
-  return false;
 }
 
 export function createObstacleGauntletModule(): EventModule {
@@ -364,7 +350,19 @@ export function createObstacleGauntletModule(): EventModule {
         throw new Error('obstacle-gauntlet event module given non-gauntlet arena');
       }
       const { hammers, pitZones } = ctx.arena.gauntletConfig;
-      return advanceMotion(ctx, hammers, pitZones, s);
+      const eliminations: Elimination[] = [];
+      const finishes: { robotId: number }[] = [];
+      const eliminated = new Set<number>();
+
+      phaseMotion(ctx, hammers);
+      phasePitFalls(ctx, pitZones, eliminations, eliminated);
+      phaseHammers(ctx, hammers, eliminations, eliminated);
+      const crumbleAdvance = phaseBridge(ctx, s, eliminations, eliminated);
+      phaseFinish(ctx, s, eliminations, eliminated, finishes);
+
+      return crumbleAdvance !== undefined
+        ? { eliminations, finishes, bridgeCrumbleX: crumbleAdvance }
+        : { eliminations, finishes };
     },
 
     isDone(ctx: TickContext): boolean {

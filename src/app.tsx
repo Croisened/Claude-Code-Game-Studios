@@ -16,7 +16,14 @@ import {
   createMazeFinishTree,
   getMazeFinishTreeWorldPos,
 } from '@/arena-visuals/maze-walls';
-import { createGauntletTraps, GAUNTLET_ABYSS_DEPTH_M } from '@/arena-visuals/gauntlet-traps';
+import {
+  createGauntletTraps,
+  GAUNTLET_ABYSS_DEPTH_M,
+  GAUNTLET_BACKGROUND_COLOR,
+  GAUNTLET_GROUND_COLOR,
+  GAUNTLET_GROUND_PAD_X,
+  GAUNTLET_PIT_DROP_DURATION_TICKS,
+} from '@/arena-visuals/gauntlet-traps';
 import { runSim, type EventModule, type TimelineEvent } from '@/sim/engine';
 import { createSprintRaceModule } from '@/sim/sprint-race';
 import { createMazeRaceModule } from '@/sim/maze-race';
@@ -56,24 +63,10 @@ const GROUND_PAD_Z = 40;
  */
 const MAZE_GROUND_COLOR = 0x3a5527;
 
-/**
- * Gauntlet ground + sky palette. Both pulled near-black so the course
- * (a single course-width strip — see `arena.width` clamp below) reads
- * as a narrow path floating in a void. The faint warmth on the floor
- * (`0x050505`) keeps the ground from disappearing entirely under the
- * dark robots; pure black would lose the floor under the bridge.
- */
-const GAUNTLET_BACKGROUND_COLOR = '#000000';
-const GAUNTLET_GROUND_COLOR = 0x050505;
-/**
- * Padding past the start grid so robots have a step or two of run-up
- * floor before the gauntlet "begins". Race-direction (X) only — the
- * lateral (Z) ground extent matches `arena.width` exactly so falling
- * sideways drops the robot into the void. Sized to comfortably cover the
- * full start grid (8 rows × 5.5 m row-spacing puts the back row at
- * x=-38.5) with margin so no robot spawns over the abyss.
- */
-const GAUNTLET_GROUND_PAD_X = 42;
+// Gauntlet visual constants (background colour, ground colour, ground X
+// padding, pit-fall drop duration, abyss depth) live in
+// `@/arena-visuals/gauntlet-traps` so the trap visuals and the App's
+// scene-setup share one source of truth.
 
 /** Peek mode hides the dev HUD and shows a minimal training caption +
  *  back link. Triggered by any of the `#peek*` hashes from Landing. */
@@ -177,6 +170,200 @@ interface BuildArenaSetupOptions {
 }
 
 /**
+ * Per-arena renderer options — ground extents (X/Z, centered on the
+ * race-direction extent for sprint/gauntlet, on origin for maze),
+ * ground colour, scene background, and the optional hole list (gauntlet
+ * pit zones + bridge become real cutouts so the camera sees the void).
+ */
+function buildRendererOptions(arena: Arena): {
+  groundExtents: { sizeX: number; sizeZ: number; centerX: number; centerZ: number };
+  groundColor: number | undefined;
+  backgroundColor: string | undefined;
+  groundHoles: ReadonlyArray<{ xStart: number; xEnd: number; zStart: number; zEnd: number }> | undefined;
+} {
+  if (arena.type === 'maze-race') {
+    return {
+      groundExtents: {
+        sizeX: arena.length + GROUND_PAD_X * 2,
+        sizeZ: arena.width + GROUND_PAD_Z * 2,
+        centerX: 0,
+        centerZ: 0,
+      },
+      groundColor: MAZE_GROUND_COLOR,
+      backgroundColor: undefined,
+      groundHoles: undefined,
+    };
+  }
+  if (arena.type === 'obstacle-gauntlet') {
+    // Lateral extent matches the course (= bridge) width exactly. Robots
+    // that drift past ±arena.width/2 fall off the floor into the black
+    // void. X gets a small pad so the start grid + finish band still have
+    // floor under them.
+    const groundHoles = arena.gauntletConfig
+      ? [
+          ...arena.gauntletConfig.pitZones.map((p) => ({
+            xStart: p.xStart,
+            xEnd: p.xEnd,
+            zStart: -arena.width / 2,
+            zEnd: arena.width / 2,
+          })),
+          {
+            xStart: arena.gauntletConfig.bridge.xStart,
+            xEnd: arena.gauntletConfig.bridge.xEnd,
+            zStart: -arena.width / 2,
+            zEnd: arena.width / 2,
+          },
+        ]
+      : undefined;
+    return {
+      groundExtents: {
+        sizeX: arena.length + GAUNTLET_GROUND_PAD_X * 2,
+        sizeZ: arena.width,
+        centerX: arena.length / 2,
+        centerZ: 0,
+      },
+      groundColor: GAUNTLET_GROUND_COLOR,
+      backgroundColor: GAUNTLET_BACKGROUND_COLOR,
+      groundHoles,
+    };
+  }
+  // sprint-race default.
+  return {
+    groundExtents: {
+      sizeX: arena.length + GROUND_PAD_X * 2,
+      sizeZ: arena.width + GROUND_PAD_Z * 2,
+      centerX: arena.length / 2,
+      centerZ: 0,
+    },
+    groundColor: undefined,
+    backgroundColor: undefined,
+    groundHoles: undefined,
+  };
+}
+
+interface FpsSamplerOptions {
+  driver: ReturnType<typeof createSimDriver>;
+  visualsUpdate: ((tickFloat: number) => void) | undefined;
+  setStats: (updater: (s: RaceStats) => RaceStats) => void;
+  isCancelled: () => boolean;
+}
+
+/**
+ * Lightweight rAF-driven stats sampler. FPS is averaged over ~1 s
+ * windows; current tick polls the driver each frame. Once the driver
+ * reports done, the displayed tick is pinned to totalTicks so the HUD
+ * reads "ticks/ticks (100%)". Returns a cancel fn that stops the loop.
+ */
+function startFpsSampler(opts: FpsSamplerOptions): () => void {
+  let rafId = 0;
+  let frameCount = 0;
+  let lastSampleAt = performance.now();
+  const sample = () => {
+    if (opts.isCancelled()) return;
+    frameCount++;
+    const now = performance.now();
+    const done = opts.driver.isDone();
+    const tick = done ? opts.driver.getTotalTicks() : opts.driver.getCurrentTick();
+    // Per-arena visuals updater (gauntlet hammer rotation + bridge
+    // crumble). Runs every frame against the integer sim tick — the
+    // sub-tick lag is < 17 ms which is imperceptible for a swinging hammer.
+    opts.visualsUpdate?.(tick);
+    if (now - lastSampleAt >= 1000) {
+      const fps = (frameCount * 1000) / (now - lastSampleAt);
+      opts.setStats((s) => ({ ...s, fps, currentTick: tick, isDone: done }));
+      frameCount = 0;
+      lastSampleAt = now;
+    } else {
+      opts.setStats((s) => ({ ...s, currentTick: tick, isDone: done }));
+    }
+    rafId = requestAnimationFrame(sample);
+  };
+  rafId = requestAnimationFrame(sample);
+  return () => {
+    if (rafId) cancelAnimationFrame(rafId);
+  };
+}
+
+/**
+ * Gauntlet-specific scene + visuals setup. Pulled out of `buildArenaSetup`
+ * so the switch stays readable and the per-arena state (fallen-robot map,
+ * crumbleX cache) is scoped to one closure.
+ *
+ * The crumble line is fed by the sim through `bridge_crumble` events
+ * — no leader-position scan happens here. Pit-fall + bridge-fell drops
+ * animate against `GAUNTLET_PIT_DROP_DURATION_TICKS` to the abyss floor.
+ */
+function buildGauntletArenaSetup(
+  arena: Arena,
+  renderer: ReturnType<typeof createRenderer>,
+): ArenaSetup {
+  if (!arena.gauntletConfig) {
+    throw new Error('obstacle-gauntlet arena loaded without gauntletConfig — loader bug');
+  }
+  const eventModule = createObstacleGauntletModule();
+  const visuals = createGauntletTraps(arena);
+
+  // Per-tick crumble X is supplied by the sim via `bridge_crumble`
+  // TimelineEvents — no independent leader scan.
+  let crumbleX: number | null = null;
+  // Per-fallen-robot drop animation. Both `pit_fall` and `bridge_fell`
+  // eliminations trigger the same Y-drop into the abyss.
+  const fallenRobots = new Map<number, number>(); // robotId → fallTick
+
+  const visualsUpdate = (tickFloat: number) => {
+    visuals.update(tickFloat, crumbleX);
+    // Y-drop fallen robots. The sim/renderer bridge stops writing pose
+    // for inactive robots, so once we set instance.y here it stays put.
+    for (const [robotId, fallTick] of fallenRobots) {
+      const inst = renderer.getInstance(robotId);
+      if (!inst) continue;
+      const ticksSince = tickFloat - fallTick;
+      const dropProgress = Math.min(
+        1,
+        Math.max(0, ticksSince / GAUNTLET_PIT_DROP_DURATION_TICKS),
+      );
+      inst.root.position.y = -dropProgress * GAUNTLET_ABYSS_DEPTH_M;
+    }
+  };
+
+  const onSimEvent = (event: TimelineEvent) => {
+    if (event.type === 'bridge_crumble') {
+      // Monotonic in the sim too, but defend against any future relaxation.
+      crumbleX = crumbleX === null ? event.crumbleX : Math.max(crumbleX, event.crumbleX);
+      return;
+    }
+    if (event.type !== 'elimination') return;
+    if (event.reason === 'pit_fall') {
+      const inst = renderer.getInstance(event.robotId);
+      if (!inst) return;
+      // Use the renderer's interpolated x — the sim's authoritative x
+      // for that tick is in result.poseFrames but the interpolated
+      // value is good enough for "which trap door opened".
+      visuals.triggerPitFall(inst.root.position.x, event.tick);
+      fallenRobots.set(event.robotId, event.tick);
+    } else if (event.reason === 'bridge_fell') {
+      fallenRobots.set(event.robotId, event.tick);
+    }
+  };
+
+  return {
+    eventModule,
+    sceneObjects: [createFinishLine(arena), visuals.group],
+    visualsUpdate,
+    onSimEvent,
+    // Low, in-front-of-leader framing instead of sprint's 18m-high
+    // perch. See CONFIG.camera.gauntletFollow for rationale — keeps
+    // traps and the trailing pack in silhouette behind the leader.
+    cameraSettings: CONFIG.camera.gauntletFollow,
+    // Hero-cam landmark. The winner-camera composes a portrait around
+    // the midpoint of (winner pose, this landmark); feeding the
+    // finish-line center here puts the camera in roughly the same
+    // relationship to the winner as the maze cam has to the tree.
+    winnerCamTarget: { x: arena.length, z: 0 },
+  };
+}
+
+/**
  * Assemble the arena-type-specific pieces: which event module to feed
  * into `runSim`, which scene objects (finish-line / maze walls / posts)
  * to drop into the renderer, and how the follow camera should pick its
@@ -197,103 +384,8 @@ function buildArenaSetup(opts: BuildArenaSetupOptions): ArenaSetup {
         sceneObjects: [createFinishLine(arena)],
       };
 
-    case 'obstacle-gauntlet': {
-      if (!arena.gauntletConfig) {
-        throw new Error('obstacle-gauntlet arena loaded without gauntletConfig — loader bug');
-      }
-      const eventModule = createObstacleGauntletModule();
-      const visuals = createGauntletTraps(arena);
-      const bridge = arena.gauntletConfig.bridge;
-      // The sim's GauntletState owns `bridgeEnteredTick` internally and
-      // doesn't expose it. The renderer detects bridge entry by reading
-      // robot positions each frame: when ANY active robot is past
-      // bridge.xStart, set bridgeEnteredTick to the current sim tick.
-      // This stays deterministic because the bridge poses come from
-      // the same SimResult driving the sim's own state — the tick at
-      // which the renderer observes "first robot past bridge.xStart"
-      // matches the tick the sim observes.
-      // Visual crumble line — mirrors the sim's leader-tracking logic
-      // (CONFIG.sim.gauntletRace.bridgeTrailMeters behind the leading
-      // on-bridge robot, monotonically advancing). Same inputs (rendered
-      // robot positions, written by the bridge from sim poses) → same
-      // crumbleX as the sim, so plank drops align with eliminations.
-      let crumbleX: number | null = null;
-      const renderer = opts.renderer;
-      // Per-fallen-robot drop animation. Both pit_fall AND bridge_fell
-      // eliminations trigger the same Y-drop into the abyss — robots
-      // disappear into the void instead of freezing in mid-air.
-      const PIT_DROP_DURATION_TICKS = 30; // ~500ms
-      // Robots fall all the way to the abyss floor — same depth the
-      // hammer pillars are rooted at. Single source of truth.
-      const PIT_DROP_DEPTH_M = GAUNTLET_ABYSS_DEPTH_M;
-      const fallenRobots = new Map<number, number>(); // robotId → fallTick
-      const visualsUpdate = (tickFloat: number) => {
-        // Recompute the leader's on-bridge x and trail crumbleX behind.
-        let leaderOnBridgeX = Number.NEGATIVE_INFINITY;
-        const insts = renderer.getAllInstances();
-        for (const inst of insts) {
-          const x = inst.root.position.x;
-          if (
-            x >= bridge.xStart &&
-            x <= bridge.xEnd &&
-            x > leaderOnBridgeX
-          ) {
-            leaderOnBridgeX = x;
-          }
-        }
-        if (leaderOnBridgeX > Number.NEGATIVE_INFINITY) {
-          const desired = leaderOnBridgeX - CONFIG.sim.gauntletRace.bridgeTrailMeters;
-          crumbleX = crumbleX === null ? desired : Math.max(crumbleX, desired);
-        }
-        visuals.update(tickFloat, crumbleX);
-        // Y-drop fallen robots. Bridge stops writing pose for inactive
-        // robots, so once we set instance.y here it stays put without
-        // being overwritten next frame.
-        for (const [robotId, fallTick] of fallenRobots) {
-          const inst = renderer.getInstance(robotId);
-          if (!inst) continue;
-          const ticksSince = tickFloat - fallTick;
-          const dropProgress = Math.min(1, Math.max(0, ticksSince / PIT_DROP_DURATION_TICKS));
-          inst.root.position.y = -dropProgress * PIT_DROP_DEPTH_M;
-        }
-      };
-      const onSimEvent = (event: TimelineEvent) => {
-        if (event.type !== 'elimination') return;
-        if (event.reason === 'pit_fall') {
-          const inst = renderer.getInstance(event.robotId);
-          if (!inst) return;
-          // Use the renderer's interpolated x (close to where the robot
-          // was at the fall tick). The sim's authoritative x for that
-          // tick is in result.poseFrames but the renderer's interpolated
-          // value is good enough for "which trap door opened".
-          visuals.triggerPitFall(inst.root.position.x, event.tick);
-          fallenRobots.set(event.robotId, event.tick);
-        } else if (event.reason === 'bridge_fell') {
-          // Bridge crumble: robot drops through the bridge hole into
-          // the abyss with the same Y-drop animation as pit falls.
-          fallenRobots.set(event.robotId, event.tick);
-        }
-      };
-      return {
-        eventModule,
-        sceneObjects: [createFinishLine(arena), visuals.group],
-        visualsUpdate,
-        onSimEvent,
-        // Low, in-front-of-leader framing instead of sprint's 18m-high
-        // perch. See CONFIG.camera.gauntletFollow for rationale — keeps
-        // traps and the trailing pack in silhouette behind the leader.
-        cameraSettings: CONFIG.camera.gauntletFollow,
-        // Hero-cam landmark — mirrors the maze branch (which uses the
-        // finish-tree). The winner-camera composes a portrait around the
-        // midpoint of (winner pose, this landmark); the offset constants
-        // in `createWinnerCamera` then sit the camera at ~8.5m at 45° off
-        // that midpoint. The winner halts just past finishX, so feeding
-        // the finish-line center here puts the camera in roughly the
-        // same relationship to the winner that the maze cam has to the
-        // tree-versus-winner pair.
-        winnerCamTarget: { x: arena.length, z: 0 },
-      };
-    }
+    case 'obstacle-gauntlet':
+      return buildGauntletArenaSetup(arena, opts.renderer);
 
     case 'maze-race': {
       if (!arena.mazeConfig) {
@@ -339,9 +431,8 @@ function buildArenaSetup(opts: BuildArenaSetupOptions): ArenaSetup {
     }
 
     default: {
-      // Exhaustive guard. When S7-04 adds 'obstacle-gauntlet' to the
-      // ArenaType union, TypeScript flags this as a never-narrow
-      // violation and forces the new arm to land.
+      // Exhaustive guard — adding a new ArenaType variant flags this
+      // line as a never-narrow violation and forces a new arm to land.
       const _exhaustive: never = arena.type;
       throw new Error(`unknown arena.type: ${String(_exhaustive)}`);
     }
@@ -423,8 +514,9 @@ export function App() {
     let renderer: ReturnType<typeof createRenderer> | null = null;
     let switcher: ReturnType<typeof createAnimationStateSwitcher> | null = null;
     let bridge: ReturnType<typeof createSimRendererBridge> | null = null;
+    let cancelFpsSampler: (() => void) | null = null;
     let cancelled = false;
-    let fpsRaf = 0;
+    const isCancelled = () => cancelled;
 
     (async () => {
       try {
@@ -436,79 +528,14 @@ export function App() {
           loadRoster(),
         ]);
         if (cancelled) return;
-        // Stash roster for the WinnerCard. Stat scaffold + sim still
-        // use the local `loadedRoster` reference below to keep the
-        // sim setup synchronous with the load.
+        // Stash roster for the WinnerCard.
         setRoster(loadedRoster);
         const roster = loadedRoster;
 
-        // Sprint races run along +X (length × width oriented). Maze
-        // arenas are square grids centered on the origin (length and
-        // width are equal). Ground extents differ per arena type.
-        const isMaze = arena.type === 'maze-race';
-        const isGauntlet = arena.type === 'obstacle-gauntlet';
-        const groundExtents = isMaze
-          ? {
-              sizeX: arena.length + GROUND_PAD_X * 2,
-              sizeZ: arena.width + GROUND_PAD_Z * 2,
-              centerX: 0,
-              centerZ: 0,
-            }
-          : isGauntlet
-          ? {
-              // Lateral extent matches the course (= bridge) width
-              // exactly. Robots that drift past ±arena.width/2 fall
-              // off the floor into the black void — the visual cue
-              // that conveys "danger". X gets a small pad so the
-              // start grid + finish band still have floor under them.
-              sizeX: arena.length + GAUNTLET_GROUND_PAD_X * 2,
-              sizeZ: arena.width,
-              centerX: arena.length / 2,
-              centerZ: 0,
-            }
-          : {
-              sizeX: arena.length + GROUND_PAD_X * 2,
-              sizeZ: arena.width + GROUND_PAD_Z * 2,
-              centerX: arena.length / 2,
-              centerZ: 0,
-            };
-
-        // Pit zones become rectangular holes in the gauntlet's floor so
-        // when the trap doors swing open the camera looks past them into
-        // the void rather than at intact ground. Each pit hole spans the
-        // full course width (the doors fill ±arena.width/2 in Z and the
-        // sim treats the zone as a full-width band — see PitZone in
-        // arena.ts). The bridge gets the same treatment: a hole spanning
-        // its full xStart..xEnd × full course width so robots that miss
-        // the planks (crumble cull) fall into a real abyss rather than
-        // landing on intact floor underneath.
-        const groundHoles =
-          isGauntlet && arena.gauntletConfig
-            ? [
-                ...arena.gauntletConfig.pitZones.map((p) => ({
-                  xStart: p.xStart,
-                  xEnd: p.xEnd,
-                  zStart: -arena.width / 2,
-                  zEnd: arena.width / 2,
-                })),
-                {
-                  xStart: arena.gauntletConfig.bridge.xStart,
-                  xEnd: arena.gauntletConfig.bridge.xEnd,
-                  zStart: -arena.width / 2,
-                  zEnd: arena.width / 2,
-                },
-              ]
-            : undefined;
+        const rendererOpts = buildRendererOptions(arena);
         renderer = createRenderer({
           placePlaceholderGrid: false,
-          groundExtents,
-          groundColor: isMaze
-            ? MAZE_GROUND_COLOR
-            : isGauntlet
-            ? GAUNTLET_GROUND_COLOR
-            : undefined,
-          backgroundColor: isGauntlet ? GAUNTLET_BACKGROUND_COLOR : undefined,
-          groundHoles,
+          ...rendererOpts,
         });
         await renderer.mount(container, camera);
         if (cancelled) return;
@@ -558,35 +585,12 @@ export function App() {
           totalTicks: result.ticks,
         }));
 
-        // Lightweight per-frame stats sampler — piggy-backs on rAF without
-        // touching the renderer or bridge internals. FPS is averaged over
-        // ~1 s windows; current tick polls the driver each frame. Once the
-        // driver reports done, we pin the displayed tick to totalTicks so
-        // the HUD reads "ticks/ticks (100%)" rather than "ticks-1/ticks".
-        let frameCount = 0;
-        let lastSampleAt = performance.now();
-        const sampleStats = () => {
-          if (cancelled) return;
-          frameCount++;
-          const now = performance.now();
-          const done = driver.isDone();
-          const tick = done ? driver.getTotalTicks() : driver.getCurrentTick();
-          // Per-arena visuals updater (gauntlet hammer rotation +
-          // bridge crumble). Runs every frame against the integer
-          // sim tick — the sub-tick lag is < 17 ms which is
-          // imperceptible for a swinging hammer.
-          built.visualsUpdate?.(tick);
-          if (now - lastSampleAt >= 1000) {
-            const fps = (frameCount * 1000) / (now - lastSampleAt);
-            setStats((s) => ({ ...s, fps, currentTick: tick, isDone: done }));
-            frameCount = 0;
-            lastSampleAt = now;
-          } else {
-            setStats((s) => ({ ...s, currentTick: tick, isDone: done }));
-          }
-          fpsRaf = requestAnimationFrame(sampleStats);
-        };
-        fpsRaf = requestAnimationFrame(sampleStats);
+        cancelFpsSampler = startFpsSampler({
+          driver,
+          visualsUpdate: built.visualsUpdate,
+          setStats,
+          isCancelled,
+        });
       } catch (err: unknown) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
@@ -596,7 +600,7 @@ export function App() {
 
     return () => {
       cancelled = true;
-      if (fpsRaf) cancelAnimationFrame(fpsRaf);
+      cancelFpsSampler?.();
       // Disposal order: bridge (writes to instance.root) → switcher
       // (reads renderer-owned mixers) → renderer. The camera handle is
       // owned by the camera effect, which tears down on `sceneVersion`

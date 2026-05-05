@@ -66,6 +66,18 @@ export type TimelineEvent =
       readonly tick: number;
       readonly winnerId: number | null;
       readonly reason: 'eventDone' | 'maxTicks';
+    }
+  | {
+      /**
+       * Emitted by event modules that maintain a moving "crumble" or
+       * "danger" line along the course (currently only obstacle-gauntlet
+       * for its bridge crumble). The renderer subscribes to keep visual
+       * plank-drops in lock-step with sim-side `bridge_fell` eliminations,
+       * removing the need for the App to recompute the leader independently.
+       */
+      readonly type: 'bridge_crumble';
+      readonly tick: number;
+      readonly crumbleX: number;
     };
 
 /**
@@ -90,6 +102,14 @@ export interface TickContext {
 export interface TickResult {
   readonly eliminations?: ReadonlyArray<{ readonly robotId: number; readonly reason: string }>;
   readonly finishes?: ReadonlyArray<{ readonly robotId: number }>;
+  /**
+   * If present, the engine emits a `bridge_crumble` TimelineEvent at this
+   * tick with the supplied `crumbleX`. Modules should only set this when
+   * the crumble line has moved (or just spawned) — emitting every tick
+   * with an unchanged value is wasteful. The renderer keys off the latest
+   * value seen from the event stream.
+   */
+  readonly bridgeCrumbleX?: number;
 }
 
 export interface EventModule {
@@ -249,6 +269,14 @@ export function runSim(opts: SimOptions): SimResult {
           place: finishOrder.length,
         });
       }
+    }
+
+    if (result.bridgeCrumbleX !== undefined) {
+      events.push({
+        type: 'bridge_crumble',
+        tick,
+        crumbleX: result.bridgeCrumbleX,
+      });
     }
 
     if (recordPoseFrames) {

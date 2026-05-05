@@ -232,7 +232,7 @@ uniformly without branching. `mazeConfig` is the load-bearing block.
         "downStartTick": 56, "downEndTick": 76 }
     ],
     "bridge": {
-      "xStart": 175, "xEnd": 220, "crumbleSpeedMps": 3.0
+      "xStart": 175, "xEnd": 220
     }
   }
 }
@@ -247,7 +247,9 @@ like sprint-race) and synthesizes an empty `gates` array. The
 - `pitZones[i]`: `0 ≤ xStart < xEnd ≤ length`.
 - `hammers[i]`: `0 ≤ x ≤ length`; `killRadius > 0`; `cycleTicks ≥ 1`;
   `0 ≤ downStartTick < downEndTick ≤ cycleTicks` (no wrap-around in v1).
-- `bridge`: `0 ≤ xStart < xEnd ≤ length`; `crumbleSpeedMps > 0`.
+- `bridge`: `0 ≤ xStart < xEnd ≤ length`. The crumble line is driven by
+  `CONFIG.sim.gauntletRace.bridgeTrailMeters` at runtime — there is no
+  per-arena crumble-speed knob.
 - Trap-ordering invariant: all pit zones must end before the first
   hammer; all hammers must precede `bridge.xStart`. Pits → hammers
   → bridge → finish along +X is enforced. (The loader rejects
@@ -294,7 +296,6 @@ export interface HammerSpec {
 export interface BridgeSpec {
   readonly xStart: number;
   readonly xEnd: number;
-  readonly crumbleSpeedMps: number;
 }
 
 export interface GauntletConfig {

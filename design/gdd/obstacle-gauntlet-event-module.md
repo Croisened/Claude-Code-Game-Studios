@@ -30,11 +30,14 @@ The module owns four things:
    "down" during a configured phase window; robots inside the
    hammer's `killRadius` while down get hit. Eliminates with
    `hammer_strike`.
-4. **Bridge-crumble eliminations.** A crumble line spawns at the
-   bridge's start the moment the first active robot enters and
-   advances forward at `crumbleSpeedMps`. Robots whose `pose.x` is
-   below the crumble line and still on the bridge get eliminated
-   with `bridge_fell`.
+4. **Bridge-crumble eliminations.** A crumble line spawns the moment
+   the first active robot enters the bridge and tracks the leading
+   on-bridge robot, trailing them by `bridgeTrailMeters`. The line is
+   monotonic — once a position is crumbled it stays crumbled.
+   Robots whose `pose.x` is below the crumble line and still on the
+   bridge get eliminated with `bridge_fell`. By construction the
+   leader can never be caught, so leaders always finish; only
+   stragglers fall.
 
 What the module deliberately does **not** own:
 
@@ -103,9 +106,10 @@ finishing order, in browser and harness.
   `gauntletConfig`.
 - **R2.** Per-event state (lazily initialised on first `init` /
   `tick`):
-  - `bridgeEnteredTick: number | null` — tick of the FIRST active
-    robot crossing into the bridge (`pose.x ≥ bridge.xStart`).
-    Drives crumble-line advancement.
+  - `crumbleX: number | null` — world-space X of the bridge crumble
+    line. Trails the leading on-bridge robot by `bridgeTrailMeters`,
+    monotonically advancing. `null` until the first robot enters the
+    bridge. See R17–R21a for the leader-tracking model.
   - `finished: boolean` — set true once a robot crosses the finish
     line. Same role as in maze-race v1 (no grace window for gauntlet).
 
@@ -175,19 +179,28 @@ finishing order, in browser and harness.
 
 ### Bridge-crumble eliminations
 
-- **R17.** The first time any active robot has `pose.x ≥ bridge.xStart`,
-  set `state.bridgeEnteredTick = ctx.tick`. The crumble has begun.
-- **R18.** Once crumble is active, compute the crumble line each tick:
-  `crumbleX = bridge.xStart + crumbleSpeedMps * (ctx.tick -
-  bridgeEnteredTick) / tickRateHz`.
-- **R19.** Any active robot with `bridge.xStart ≤ pose.x < crumbleX`
+- **R17.** Each tick, scan active robots for the leading on-bridge
+  position: `leaderOnBridgeX = max(pose.x for active robots with
+  bridge.xStart ≤ pose.x ≤ bridge.xEnd)`. If no robot is on the
+  bridge yet, the crumble is dormant.
+- **R18.** When at least one robot is on the bridge, the crumble line
+  advances to `desiredCrumbleX = leaderOnBridgeX - bridgeTrailMeters`.
+  `state.crumbleX = max(state.crumbleX, desiredCrumbleX)` — monotonic.
+- **R19.** Any active robot with `bridge.xStart ≤ pose.x < state.crumbleX`
   AND `pose.x ≤ bridge.xEnd` (still ON the bridge) is eliminated
   `bridge_fell` this tick.
 - **R20.** Robots past `bridge.xEnd` are SAFE — the crumble doesn't
   pursue them off the bridge. Robots before `bridge.xStart` are
   also unaffected (they haven't reached the bridge).
-- **R21.** The crumble line is **monotonic**: it never recedes. State
-  doesn't track per-segment crumble; the line advances and stays.
+- **R21.** The crumble line is **monotonic**: it never recedes. By
+  construction the leader can never be caught (the crumble trails
+  them by `bridgeTrailMeters`), so leaders always finish; only
+  stragglers fall.
+- **R21a.** When `state.crumbleX` advances on a given tick, the
+  module emits a `bridge_crumble` TimelineEvent
+  (`{ type, tick, crumbleX }`). The renderer subscribes via the App's
+  `onEvent` forwarder so visual plank-drops align with sim-side
+  `bridge_fell` eliminations without recomputing the leader.
 
 ### Finish detection
 
@@ -261,16 +274,25 @@ if isDown(hammer, tick) and abs(pose.x - hammer.x) < hammer.killRadius:
 ### Bridge-crumble eliminations
 
 ```
-if bridgeEnteredTick is null:
-    if any active robot has pose.x >= bridge.xStart:
-        bridgeEnteredTick = tick
+leaderOnBridgeX = -Infinity
+for each active robot:
+    if bridge.xStart <= pose.x <= bridge.xEnd:
+        leaderOnBridgeX = max(leaderOnBridgeX, pose.x)
 
-if bridgeEnteredTick is not null:
-    ticksSince = tick - bridgeEnteredTick
-    crumbleX   = bridge.xStart + crumbleSpeedMps * ticksSince / tickRateHz
+if leaderOnBridgeX > -Infinity:
+    desiredCrumbleX = leaderOnBridgeX - bridgeTrailMeters
+    state.crumbleX  = state.crumbleX is null
+                      ? desiredCrumbleX
+                      : max(state.crumbleX, desiredCrumbleX)
+
+if state.crumbleX is not null:
     for each active robot:
-        if pose.x < crumbleX and bridge.xStart <= pose.x <= bridge.xEnd:
+        if pose.x < state.crumbleX and bridge.xStart <= pose.x <= bridge.xEnd:
             eliminated 'bridge_fell'
+
+    # Emit a bridge_crumble TimelineEvent if state.crumbleX advanced
+    # this tick — the renderer subscribes to keep visual planks in
+    # lock-step with eliminations.
 ```
 
 ### Variable ranges (defaults at S7-04 close)
@@ -288,7 +310,7 @@ if bridgeEnteredTick is not null:
 | `separationForceMps` | yes | 4.5 | 2–10 | Push magnitude at zero distance. |
 | `separationCoincidentEps` | yes | 0.05 | 0–0.1 | Coincident-pair threshold. |
 | `lateralBoundMargin` | yes | 0.5 | 0–2 | Distance from arena z-edge for clamp. |
-| arena `crumbleSpeedMps` | per-arena | 3.0 | 1–10 | Crumble line advance rate. |
+| `bridgeTrailMeters` | yes | 2.0 | 0.5–8 | Crumble line trail behind the leader. |
 
 ---
 
@@ -301,12 +323,12 @@ if bridgeEnteredTick is not null:
 | Hammer with `cycleTicks = 1` | Loader requires `cycleTicks >= 1`. With cycle=1 and downEndTick=1, hammer is always down. Robots within killRadius of it die instantly. Valid edge — used as a "dead zone." |
 | Hammer with `downStartTick = downEndTick` | Loader rejects (`downStartTick >= downEndTick`). |
 | Bridge entered the same tick as a robot eliminated by a hammer | The pit/hammer eliminations process BEFORE the bridge-detection; the freshly-eliminated robot doesn't count for bridge entry. The next active robot to cross triggers it. |
-| Bridge entered AND finish reached in same tick | Engine processes Phase E (finish) AFTER Phase D (bridge crumble). If a robot reaches the finish line same tick as bridge entry, finish wins — the crumble is on its first tick (crumbleX = bridge.xStart) and only catches robots already behind that line. |
-| `bridgeEnteredTick` set but bridge subsequently has no actives | Crumble continues advancing each tick, catching up to and past `bridge.xEnd`. After that point no further `bridge_fell` events emit (the predicate `pose.x < crumbleX AND ≤ xEnd` fails for robots past xEnd). |
+| Bridge entered AND finish reached in same tick | Engine processes Phase E (finish) AFTER Phase D (bridge crumble). If a robot reaches the finish line same tick as bridge entry, finish wins — the crumble is at its initial position (`leaderOnBridgeX - bridgeTrailMeters`) and only catches robots already behind that line. |
+| Leader leaves the bridge (past `xEnd`) but stragglers remain | The crumble line freezes — no on-bridge robot, no leader to track, so `state.crumbleX` stays at its last value. Stragglers behind it still get eliminated, but the line no longer chases them off the bridge. |
 | Empty roster | `init` returns `[]`; `tick` is a no-op; `isDone` returns true. Engine immediately ends sim. |
 | `dtSeconds = 0` | Motion is no-op; pit/hammer/bridge phases still evaluate against current positions. Theoretical — engine always passes a non-zero dt. |
 | All robots eliminated before finish | `isDone` returns true (no actives); `winnerId` resolves to `null` per the engine's `finishOrder.length > 0 ? finishOrder[0] : null`. App handles gracefully (no WinnerCard, no Winner Camera). |
-| Robot starts already past `bridge.xStart` (impossible per arena layout, but defensive) | If true at construction (e.g., a hostile arena puts startGrid past bridge), `bridgeEnteredTick` would set immediately on tick 0. Crumble starts moving. Loader can't currently catch this — relies on arena authors. |
+| Robot starts already past `bridge.xStart` (impossible per arena layout, but defensive) | If true at construction (e.g., a hostile arena puts startGrid past bridge), `state.crumbleX` initialises on tick 0 to that robot's `pose.x - bridgeTrailMeters`. Loader can't currently catch this — relies on arena authors. |
 
 ---
 
@@ -373,11 +395,14 @@ spec). See §4 for default values + ranges.
   enough that robots react before reaching the kill zone but short
   enough that they can't anticipate hammers further down the
   corridor.
-- **`crumbleSpeedMps = 3.0`** (per-arena, in arena-03.json) — slow
-  enough that even low-Full-Send robots can outrun it (their
-  effective speed at base 6 × stat.speed 0.5 = 3 m/s matches the
-  crumble; faster robots gain ground). Tighter than this and slow
-  robots can't escape the bridge.
+- **`bridgeTrailMeters = 2.0`** (in `CONFIG.sim.gauntletRace`) — the
+  crumble follows the leader by 2 m, so leaders ALWAYS escape and only
+  robots that fall further than 2 m behind the leader fall through.
+  Smaller = more dramatic (planks drop right behind); larger = more
+  forgiving for the trailing pack. Replaces the older fixed-rate
+  `crumbleSpeedMps` model: the leader-tracking crumble guarantees a
+  finisher (no race-to-zero failure mode) and reads as more intentional
+  in the visuals.
 
 ### Trap-layout tuning (per-arena)
 
@@ -387,7 +412,8 @@ Arena-03 defaults at S7-04 close:
 - 3 hammers: `x=110, 128, 146`, `cycleTicks=80`,
   `killRadius=1.0`, staggered down windows
   `[0,20], [28,48], [56,76]`.
-- Bridge: `[175, 220]`, `crumbleSpeedMps=3.0`.
+- Bridge: `[175, 220]`. Crumble line trails the leader by
+  `CONFIG.sim.gauntletRace.bridgeTrailMeters` (default 2 m).
 
 The down-window stagger gives clean "all-three-up" gaps in the
 cycle — fast low-Doubter robots can occasionally luck through.

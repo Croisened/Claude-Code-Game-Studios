@@ -48,7 +48,7 @@ function arena03(): Arena {
     gauntletConfig: {
       pitZones: Array<{ xStart: number; xEnd: number }>;
       hammers: Array<{ x: number; killRadius: number; cycleTicks: number; downStartTick: number; downEndTick: number }>;
-      bridge: { xStart: number; xEnd: number; crumbleSpeedMps: number };
+      bridge: { xStart: number; xEnd: number };
     };
   };
   return Object.freeze({

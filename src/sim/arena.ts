@@ -67,11 +67,7 @@ const REQUIRED_HAMMER_FIELDS = [
   'downStartTick',
   'downEndTick',
 ] as const;
-const REQUIRED_BRIDGE_FIELDS = [
-  'xStart',
-  'xEnd',
-  'crumbleSpeedMps',
-] as const;
+const REQUIRED_BRIDGE_FIELDS = ['xStart', 'xEnd'] as const;
 const MIN_GATE_COUNT = 2;
 const MIN_ROSTER_COVERAGE = 85;
 
@@ -138,16 +134,15 @@ export interface HammerSpec {
 
 /**
  * The crumbling-bridge final stage. The bridge spans `[xStart, xEnd]`
- * along +X. Once the FIRST active robot enters the bridge, a "crumble
- * line" spawns at `xStart` and advances forward at `crumbleSpeedMps`
- * m/sec. Any robot whose pose.x is below the crumble line AND whose
- * pose.x is within `[xStart, xEnd]` (still on the bridge) is
- * eliminated with `bridge_fell`. Robots past `xEnd` are clear.
+ * along +X. Once a robot enters the bridge, a "crumble line" spawns
+ * `CONFIG.sim.gauntletRace.bridgeTrailMeters` behind the leading
+ * on-bridge robot and advances monotonically with the leader. Any
+ * robot whose pose.x falls below the crumble line while still on the
+ * bridge is eliminated with `bridge_fell`. Robots past `xEnd` are clear.
  */
 export interface BridgeSpec {
   readonly xStart: number;
   readonly xEnd: number;
-  readonly crumbleSpeedMps: number;
 }
 
 /**
@@ -517,11 +512,7 @@ function validateBridge(raw: unknown, courseLength: number): BridgeSpec {
       `Arena bridge invalid: 0 <= xStart < xEnd <= length (${courseLength}); got [${xStart}, ${xEnd}]`,
     );
   }
-  const crumbleSpeedMps = ensurePositive(
-    ensureFiniteNumber(raw.crumbleSpeedMps, 'bridge.crumbleSpeedMps'),
-    'bridge.crumbleSpeedMps',
-  );
-  return Object.freeze({ xStart, xEnd, crumbleSpeedMps });
+  return Object.freeze({ xStart, xEnd });
 }
 
 function validateGauntletConfig(raw: unknown, courseLength: number): GauntletConfig {

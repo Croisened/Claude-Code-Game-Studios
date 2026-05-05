@@ -156,6 +156,12 @@ export function createSimRendererBridge(opts: SimRendererBridgeOptions): SimRend
         }
         break;
       }
+      case 'bridge_crumble': {
+        // Cosmetic-only sim event — the gauntlet visuals subscribe via
+        // the App's `onEvent` forwarder. The bridge has no per-robot
+        // animation work to do here.
+        break;
+      }
       // No `default`: the TimelineEvent union is closed and exhaustively
       // handled above. New event types will surface as TS errors here.
     }
