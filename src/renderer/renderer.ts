@@ -187,6 +187,31 @@ export interface CreateRendererOptions {
    * default sprint-race / maze ground is unchanged).
    */
   groundHoles?: readonly GroundHole[];
+  /**
+   * Optional equirectangular panorama (JPG/PNG) to use as the scene
+   * background — assigned to `scene.background` once loaded with
+   * `EquirectangularReflectionMapping`. The `backgroundColor` (or default)
+   * shows during the brief load, then swaps in once the texture decodes.
+   *
+   * Background only — does NOT touch `scene.environment`, so PBR
+   * reflections on the robots are unchanged. Lighting stays consistent
+   * across arenas.
+   *
+   * Disposed automatically on `dispose()`.
+   */
+  skyboxPath?: string;
+  /**
+   * Optional rotation (radians) applied to the skybox via
+   * `scene.backgroundRotation`. The equirect can't be "translated" (it's
+   * rendered as a fullscreen pass keyed by ray direction), but it can be:
+   *   - `y` — yaw the panorama horizontally. Useful for hiding the
+   *     image's wrap seam behind the camera.
+   *   - `x` — pitch the panorama. POSITIVE values raise the horizon
+   *     line in the camera's view (more sky visible above the course).
+   *   - `z` — roll. Rarely needed.
+   * All three default to 0. Ignored when `skyboxPath` is unset.
+   */
+  skyboxRotation?: { x?: number; y?: number; z?: number };
 }
 
 // -----------------------------------------------------------------------------
@@ -237,6 +262,7 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
   let camera: THREE.PerspectiveCamera | null = null;
   let internalCamera: THREE.PerspectiveCamera | null = null;
   let envTexture: THREE.Texture | null = null;
+  let skyboxTexture: THREE.Texture | null = null;
   let instances: RobotInstance[] = [];
   let instanceById: Map<number, RobotInstance> = new Map();
   const clock = new THREE.Clock(false);
@@ -475,6 +501,41 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
       pmrem.dispose();
     }
 
+    // Optional equirectangular skybox. Fire-and-forget — scene.background
+    // already shows the fallback colour; the panorama swaps in once the
+    // texture decodes (~50–200 ms typical). Production-only because the
+    // test stub doesn't implement enough of WebGLRenderer for textures.
+    if (isProductionRenderer && opts.skyboxPath) {
+      const skyboxPath = opts.skyboxPath;
+      const skyboxRotation = opts.skyboxRotation;
+      new THREE.TextureLoader().load(
+        skyboxPath,
+        (texture) => {
+          if (disposed || !scene) {
+            texture.dispose();
+            return;
+          }
+          texture.mapping = THREE.EquirectangularReflectionMapping;
+          texture.colorSpace = THREE.SRGBColorSpace;
+          skyboxTexture = texture;
+          scene.background = texture;
+          if (skyboxRotation) {
+            scene.backgroundRotation.set(
+              skyboxRotation.x ?? 0,
+              skyboxRotation.y ?? 0,
+              skyboxRotation.z ?? 0,
+            );
+          }
+        },
+        undefined,
+        (err) => {
+          // Non-fatal: keep the fallback colour and log so dev sees the
+          // path mistake without the whole scene going dark.
+          console.warn(`[renderer] failed to load skybox '${skyboxPath}':`, err);
+        },
+      );
+    }
+
     if (suppliedCamera) {
       camera = suppliedCamera;
     } else {
@@ -543,6 +604,11 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
     if (envTexture) {
       envTexture.dispose();
       envTexture = null;
+    }
+
+    if (skyboxTexture) {
+      skyboxTexture.dispose();
+      skyboxTexture = null;
     }
 
     if (webGLRenderer) {

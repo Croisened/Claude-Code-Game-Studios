@@ -180,6 +180,8 @@ function buildRendererOptions(arena: Arena): {
   groundColor: number | undefined;
   backgroundColor: string | undefined;
   groundHoles: ReadonlyArray<{ xStart: number; xEnd: number; zStart: number; zEnd: number }> | undefined;
+  skyboxPath: string | undefined;
+  skyboxRotation: { x?: number; y?: number; z?: number } | undefined;
 } {
   if (arena.type === 'maze-race') {
     return {
@@ -192,6 +194,8 @@ function buildRendererOptions(arena: Arena): {
       groundColor: MAZE_GROUND_COLOR,
       backgroundColor: undefined,
       groundHoles: undefined,
+      skyboxPath: undefined,
+      skyboxRotation: undefined,
     };
   }
   if (arena.type === 'obstacle-gauntlet') {
@@ -225,6 +229,16 @@ function buildRendererOptions(arena: Arena): {
       groundColor: GAUNTLET_GROUND_COLOR,
       backgroundColor: GAUNTLET_BACKGROUND_COLOR,
       groundHoles,
+      // Equirectangular cyberpunk-grove panorama from Blockade Labs.
+      // Background only — robot lighting stays consistent with the other
+      // arenas. The black `backgroundColor` above shows during the brief
+      // texture-load window before the panorama swaps in.
+      skyboxPath: '/assets/art/skyboxes/gauntlet-blockade.jpg',
+      // y = 90° yaw — rotates the panorama so its wrap seam sits behind
+      // the +X-running camera instead of on the visible horizon line.
+      // x = +0.30 rad (~17°) tilt — raises the horizon in the camera's
+      //     view so more sky / city skyline is visible above the course.
+      skyboxRotation: { x: 0.30, y: Math.PI / 2 },
     };
   }
   // sprint-race default.
@@ -238,6 +252,8 @@ function buildRendererOptions(arena: Arena): {
     groundColor: undefined,
     backgroundColor: undefined,
     groundHoles: undefined,
+    skyboxPath: undefined,
+    skyboxRotation: undefined,
   };
 }
 
