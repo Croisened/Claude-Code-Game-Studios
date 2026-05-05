@@ -353,25 +353,10 @@ function createBridge(bridge: BridgeSpec, courseWidth: number): {
     roughness: 0.8,
     metalness: 0,
   });
-  const beamMat = new THREE.MeshStandardMaterial({
-    color: BRIDGE_BEAM_COLOR,
-    roughness: 0.85,
-    metalness: 0,
-  });
 
-  // Side rails (continuous, do NOT crumble — visual frame for the planks).
-  // Sit on the plank surface and extend upward, so they remain visible
-  // above the ground even after the planks have fallen away.
-  const railGeom = new THREE.BoxGeometry(length, BRIDGE_RAIL_HEIGHT, BRIDGE_RAIL_THICKNESS);
-  for (const sign of [1, -1]) {
-    const rail = new THREE.Mesh(railGeom, beamMat);
-    rail.position.set(
-      (bridge.xStart + bridge.xEnd) / 2,
-      BRIDGE_RAIL_BOTTOM_Y + BRIDGE_RAIL_HEIGHT / 2,
-      sign * (platformWidth / 2),
-    );
-    group.add(rail);
-  }
+  // Side rails are no longer built per-bridge — they live on the
+  // gauntlet root as full-course rails (see createCourseRails) so the
+  // bridge fits into the same visual frame the rest of the course has.
 
   // Planks — array of small boxes, each crumbles independently.
   const plankGeom = new THREE.BoxGeometry(
@@ -392,6 +377,51 @@ function createBridge(bridge: BridgeSpec, courseWidth: number): {
 
   const plankCrumbleTick: (number | null)[] = new Array(BRIDGE_PLANK_COUNT).fill(null);
   return { group, handle: { spec: bridge, planks, plankXEnds, plankCrumbleTick } };
+}
+
+// --- Course rails -------------------------------------------------
+
+/**
+ * Two long box rails running the FULL ground X extent at the lateral
+ * edges (z = ±courseWidth/2). Replaces the bridge-only rails so the
+ * weathered timber frame ties the entire gauntlet together — start
+ * grid, pit zone, hammer alley, bridge, and finish band all sit
+ * inside the same rail run.
+ *
+ * Rail length matches the App's ground-plane X extent
+ * (`arena.length + GAUNTLET_GROUND_PAD_X * 2`), so the rails extend
+ * symmetrically past both the back of the start grid (-X) and past
+ * the finish line (+X). Z and Y match the bridge planks' rail
+ * geometry so the bridge section reads as continuous with the rest.
+ */
+function createCourseRails(arena: Arena): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'gauntlet-course-rails';
+
+  const railLength = arena.length + GAUNTLET_GROUND_PAD_X * 2;
+  const railCenterX = arena.length / 2;
+  const railZ = arena.width / 2;
+
+  const railGeom = new THREE.BoxGeometry(
+    railLength,
+    BRIDGE_RAIL_HEIGHT,
+    BRIDGE_RAIL_THICKNESS,
+  );
+  const railMat = new THREE.MeshStandardMaterial({
+    color: BRIDGE_BEAM_COLOR,
+    roughness: 0.85,
+    metalness: 0,
+  });
+  for (const sign of [1, -1]) {
+    const rail = new THREE.Mesh(railGeom, railMat);
+    rail.position.set(
+      railCenterX,
+      BRIDGE_RAIL_BOTTOM_Y + BRIDGE_RAIL_HEIGHT / 2,
+      sign * railZ,
+    );
+    group.add(rail);
+  }
+  return group;
 }
 
 // --- Public API ---------------------------------------------------
@@ -428,6 +458,10 @@ export function createGauntletTraps(arena: Arena): GauntletVisuals {
   const cfg = arena.gauntletConfig;
   const root = new THREE.Group();
   root.name = 'gauntlet-traps';
+
+  // Full-course side rails — visual frame that runs from behind the
+  // start grid all the way past the finish line.
+  root.add(createCourseRails(arena));
 
   // Pit traps.
   const pitHandles: PitTrapHandle[] = [];
