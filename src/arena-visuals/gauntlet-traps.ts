@@ -27,8 +27,6 @@
  */
 import * as THREE from 'three';
 import type { Arena, BridgeSpec, HammerSpec, PitZone } from '@/sim/arena';
-import { createOrangeTree } from '@/arena-visuals/maze-walls';
-import { createRng } from '@/sim/rng';
 import {
   HAMMER_ARM_LENGTH_M,
   hammerArmAngle,
@@ -78,12 +76,13 @@ export const GAUNTLET_ABYSS_DEPTH_M = 60;
 export const GAUNTLET_PIT_DROP_DURATION_TICKS = 30;
 
 /** Padding past the start grid so the start band has floor under it
- *  before the gauntlet "begins". Exported to keep the App's ground-extent
- *  computation aligned with the trap-visuals' grove placement. */
+ *  before the gauntlet "begins". Exported so the App's ground-extent
+ *  matches the X range that the trap visuals expect. */
 export const GAUNTLET_GROUND_PAD_X = 42;
 
 /** Scene background colour used when an obstacle-gauntlet arena is loaded
- *  — near-black so the narrow course reads as a path floating in a void. */
+ *  — near-black, shown only during the brief skybox-texture load before
+ *  the panorama swaps in. */
 export const GAUNTLET_BACKGROUND_COLOR = '#000000';
 
 /** Ground-plane base colour for the gauntlet. Pulled near-black; faint
@@ -142,95 +141,6 @@ const BRIDGE_PLANK_FALL_DEPTH_M = 5.0;
  *  edge (the side the robot came from) drops first, so the plank tips
  *  into the void behind the runner instead of sinking flat. ~32°. */
 const BRIDGE_PLANK_FALL_TILT_RAD = 0.55;
-
-// --- Grove (abyss-floor base + scattered orange trees) ------------
-//
-// A wide flat plane sits at the very bottom of the abyss (top face flush
-// with the deepest pillar roots at y = -GAUNTLET_ABYSS_DEPTH_M) with 24
-// orange trees scattered across it. Reuses the maze finish-tree palette
-// (createOrangeTree + MAZE_GROUND_COLOR) so the gauntlet's floor reads as
-// the same orange-grove world glimpsed from far above. Trees stay in the
-// outboard bands (z outside the course strip) so they don't punch up
-// through the suspended path.
-//
-// Plane lateral extent is 3× course width per the spec; longitudinal
-// extent matches the gauntlet ground's X extent (course length + pad on
-// each side) so the grove visibly extends beneath the entire course.
-
-/** Sized to match MAZE_GROUND_COLOR in app.tsx — same orange-grove green. */
-const GROVE_BASE_COLOR = 0x3a5527;
-const GROVE_BASE_ROUGHNESS = 0.95;
-/** Top of the grove plane sits at the abyss floor (= where the hammer
- *  pillars bottom out). Visually grounds the suspended-platform fiction. */
-const GROVE_BASE_Y = -GAUNTLET_ABYSS_DEPTH_M;
-/** Lateral plane size = 3× the course/bridge width. */
-const GROVE_BASE_WIDTH_MULT = 3;
-/** X-axis padding past the course on each end so the grove stretches
- *  visibly past the start grid and finish band. Mirrors the gauntlet
- *  ground's GAUNTLET_GROUND_PAD_X (kept in sync visually, not imported
- *  to avoid a UI→arena-visuals dep). */
-const GROVE_BASE_X_PAD = 36;
-const GROVE_TREE_COUNT = 24;
-/** Keep tree trunks at least this far outboard of the course edge so
- *  canopies don't intersect the suspended platform from below. */
-const GROVE_TREE_INNER_BUFFER_Z = 1.5;
-const GROVE_TREE_OUTER_BUFFER_Z = 1.0;
-const GROVE_TREE_X_BUFFER = 1.0;
-/** Per-tree uniform scale range. Slight shrinking + variation makes the
- *  24 trees read as a scattered grove from above instead of a regular
- *  array of identical landmarks. */
-const GROVE_TREE_SCALE_MIN = 0.55;
-const GROVE_TREE_SCALE_MAX = 0.95;
-/** Fixed seed → deterministic grove layout regardless of the sim seed.
- *  Visual placement doesn't need to vary per race. */
-const GROVE_RNG_SEED = 0xC0FFEE;
-
-function createGauntletGrove(arena: Arena): THREE.Group {
-  const group = new THREE.Group();
-  group.name = 'gauntlet-grove';
-
-  const sizeZ = arena.width * GROVE_BASE_WIDTH_MULT;
-  const sizeX = arena.length + GROVE_BASE_X_PAD * 2;
-  const centerX = arena.length / 2;
-
-  // Flat base plane (no thickness — never seen edge-on; camera looks
-  // down or across, never up under it). PlaneGeometry rotated to lie
-  // flat, top face at GROVE_BASE_Y.
-  const baseGeom = new THREE.PlaneGeometry(sizeX, sizeZ);
-  const baseMat = new THREE.MeshStandardMaterial({
-    color: GROVE_BASE_COLOR,
-    roughness: GROVE_BASE_ROUGHNESS,
-  });
-  const base = new THREE.Mesh(baseGeom, baseMat);
-  base.rotation.x = -Math.PI / 2;
-  base.position.set(centerX, GROVE_BASE_Y, 0);
-  base.receiveShadow = true;
-  group.add(base);
-
-  // 24 orange trees scattered across the outboard bands. Alternate sides
-  // for an even left/right distribution; jitter x and z within each band.
-  const rng = createRng(GROVE_RNG_SEED);
-  const courseHalfZ = arena.width / 2;
-  const halfZ = sizeZ / 2;
-  const innerZ = courseHalfZ + GROVE_TREE_INNER_BUFFER_Z;
-  const outerZ = halfZ - GROVE_TREE_OUTER_BUFFER_Z;
-  const xMin = centerX - sizeX / 2 + GROVE_TREE_X_BUFFER;
-  const xMax = centerX + sizeX / 2 - GROVE_TREE_X_BUFFER;
-
-  for (let i = 0; i < GROVE_TREE_COUNT; i++) {
-    const side = i % 2 === 0 ? -1 : 1;
-    const z = side * (innerZ + rng() * Math.max(0, outerZ - innerZ));
-    const x = xMin + rng() * (xMax - xMin);
-    const scale =
-      GROVE_TREE_SCALE_MIN + rng() * (GROVE_TREE_SCALE_MAX - GROVE_TREE_SCALE_MIN);
-    const yawY = rng() * Math.PI * 2;
-    const tree = createOrangeTree({ scale, yawY });
-    tree.position.set(x, GROVE_BASE_Y, z);
-    group.add(tree);
-  }
-
-  return group;
-}
 
 // --- Pit trap-door --------------------------------------------------
 
@@ -518,11 +428,6 @@ export function createGauntletTraps(arena: Arena): GauntletVisuals {
   const cfg = arena.gauntletConfig;
   const root = new THREE.Group();
   root.name = 'gauntlet-traps';
-
-  // Grove (abyss-floor base + scattered trees). Added before the traps so
-  // it's behind them in the scene-graph traversal — purely cosmetic but
-  // keeps related visuals grouped.
-  root.add(createGauntletGrove(arena));
 
   // Pit traps.
   const pitHandles: PitTrapHandle[] = [];
