@@ -15,7 +15,12 @@
  */
 
 import { CONFIG } from '@/config';
-import { deriveStats, type RobotTraits, type SimStats } from '@/sim/trait-to-stat';
+import {
+  deriveStats,
+  type RobotTraits,
+  type SimStats,
+  type SpeedSourceTrait,
+} from '@/sim/trait-to-stat';
 
 /**
  * `EXPECTED_ROBOT_COUNT` is bound to the CSV / NFT collection size on disk.
@@ -180,4 +185,24 @@ export async function loadRoster(opts: LoadRosterOptions = {}): Promise<RobotRos
   const entries = records.map(buildEntry);
   entries.sort((a, b) => a.id - b.id);
   return Object.freeze(entries);
+}
+
+/**
+ * Return a new immutable roster with stats re-derived using the supplied
+ * `speedSourceTrait`. Used by the trait-wheel feature: the base roster is
+ * loaded once on app start, then re-derived per race once the wheel commits
+ * a trait. Pure, synchronous, reuses raw `traits` references (frozen).
+ */
+export function withSpeedSource(
+  roster: RobotRoster,
+  speedSourceTrait: SpeedSourceTrait,
+): RobotRoster {
+  return Object.freeze(
+    roster.map((entry) =>
+      Object.freeze({
+        ...entry,
+        stats: Object.freeze(deriveStats(entry.traits, { speedSourceTrait })),
+      }),
+    ),
+  );
 }

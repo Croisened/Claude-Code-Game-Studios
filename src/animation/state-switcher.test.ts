@@ -133,6 +133,7 @@ describe('createAnimationStateSwitcher — construction', () => {
       getAllInstances: () => [] as never[],
       getScene: () => new THREE.Scene(),
       addToScene: () => {},
+      applyInitialPoses: () => {},
       dispose: () => {},
     };
     expect(() => createAnimationStateSwitcher(empty)).toThrow(/not mounted/);

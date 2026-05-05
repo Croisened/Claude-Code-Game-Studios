@@ -33,6 +33,7 @@ function makeFakeRenderer(robotCount: number): Renderer {
     getAllInstances: () => instances,
     getScene: () => new THREE.Scene(),
     addToScene: () => {},
+    applyInitialPoses: () => {},
     dispose: () => {},
   };
 }

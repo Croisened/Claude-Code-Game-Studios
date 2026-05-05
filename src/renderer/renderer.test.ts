@@ -401,6 +401,43 @@ describe('createRenderer — instances', () => {
     expect(() => r.getInstance(0)).toThrow(/not mounted/i);
   });
 
+  it('applyInitialPoses writes position + yaw (with asset offset) to known instances', async () => {
+    const h = makeHarness();
+    const r = makeRenderer(h);
+    await r.mount(h.container);
+
+    // Three sample poses; arena/sim coords. yaw=0 means "facing +X"; the
+    // renderer adds π/2 because the GLB's authored forward is +Z.
+    const poses = [
+      { id: 0, x: 1.5, y: 0, z: -2.5, yaw: 0, active: true },
+      { id: 5, x: 7, y: 0, z: 4, yaw: Math.PI / 4, active: true },
+      { id: 10, x: -3, y: 0.5, z: 0, yaw: -Math.PI / 2, active: true },
+    ];
+    r.applyInitialPoses(poses);
+
+    for (const pose of poses) {
+      const inst = r.getInstance(pose.id);
+      expect(inst).toBeDefined();
+      expect(inst!.root.position.x).toBeCloseTo(pose.x, 9);
+      expect(inst!.root.position.y).toBeCloseTo(pose.y, 9);
+      expect(inst!.root.position.z).toBeCloseTo(pose.z, 9);
+      expect(inst!.root.rotation.y).toBeCloseTo(pose.yaw + Math.PI / 2, 9);
+    }
+    r.dispose();
+  });
+
+  it('applyInitialPoses silently skips poses for unknown ids', async () => {
+    const h = makeHarness();
+    const r = makeRenderer(h);
+    await r.mount(h.container);
+    expect(() =>
+      r.applyInitialPoses([
+        { id: 9999, x: 1, y: 0, z: 1, yaw: 0, active: true },
+      ]),
+    ).not.toThrow();
+    r.dispose();
+  });
+
   it('every instance has a unique skin texture (Set size === robotCount)', async () => {
     const h = makeHarness();
     const r = makeRenderer(h);

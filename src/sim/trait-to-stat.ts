@@ -37,10 +37,31 @@ export interface SimStats {
 }
 
 /**
+ * The five raw NFT trait keys. The trait-wheel selects one of these per race
+ * to drive `stat.speed`. Default is `'fullSend'`, which preserves the original
+ * trait→stat mapping documented in trait-to-stat-derivation.md.
+ *
+ * Only `stat.speed` is moveable — `acceleration` and `handling` retain their
+ * intrinsic fullSend dependence (they model "from-rest acceleration" and
+ * "cornering grip", which are physically tied to fullSend regardless of which
+ * trait the player rolls for top-speed bonus).
+ */
+export type SpeedSourceTrait = keyof RobotTraits;
+
+export interface DeriveStatsOptions {
+  /** Default `'fullSend'`. */
+  readonly speedSourceTrait?: SpeedSourceTrait;
+}
+
+/**
  * Derive `SimStats` from `RobotTraits`. See trait-to-stat-derivation.md §4.
  */
-export function deriveStats(traits: RobotTraits): SimStats {
+export function deriveStats(
+  traits: RobotTraits,
+  opts: DeriveStatsOptions = {},
+): SimStats {
   const k = CONFIG.sim.traitToStat;
+  const speedSourceTrait = opts.speedSourceTrait ?? 'fullSend';
 
   const f = traits.fullSend / 100;
   const d = traits.degen / 100;
@@ -48,8 +69,10 @@ export function deriveStats(traits: RobotTraits): SimStats {
   const b = traits.doubter / 100;
   const a = traits.altruist / 100;
 
+  const speedDriver = traits[speedSourceTrait] / 100;
+
   return {
-    speed: k.speed.base + k.speed.fullSendCoeff * f,
+    speed: k.speed.base + k.speed.fullSendCoeff * speedDriver,
     acceleration:
       k.acceleration.base +
       k.acceleration.fullSendCoeff * f -

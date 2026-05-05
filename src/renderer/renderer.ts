@@ -15,11 +15,23 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CONFIG } from '@/config';
 import type { RobotAnimationState } from '@/animation/types';
+import type { RobotPose } from '@/sim/engine';
 import {
   loadRobotAssets,
   type RobotAssets,
   type LoadRobotAssetsOpts,
 } from '@/renderer/asset-loader';
+
+/**
+ * Asset-vs-sim yaw offset. Mirrors `ASSET_FORWARD_YAW_OFFSET` in
+ * `sim-renderer-bridge.ts:63` — the bridge owns per-tick rotation writes,
+ * but `applyInitialPoses` is a one-time pre-sim placement that needs the
+ * same offset so robots face along +X (the sim's "forward") at start.
+ *
+ * If a third consumer of this constant ever appears, promote it to a
+ * shared module rather than triplicating it.
+ */
+const ASSET_FORWARD_YAW_OFFSET = Math.PI / 2;
 
 // --- Tunable invariants (not in CONFIG; see GDD §7 "Implementation-detail constants")
 const MAX_DT = 0.1;            // seconds; clamps tab-throttle skip-ahead
@@ -91,6 +103,15 @@ export interface Renderer {
   getAllInstances(): readonly RobotInstance[];
   getScene(): THREE.Scene;
   addToScene(obj: THREE.Object3D): void;
+  /**
+   * Place each known instance at its arena start pose. Called ONCE during
+   * scene setup, BEFORE the sim/bridge starts. Mirrors `placeOnGrid` for the
+   * debug grid path — initial-placement is a renderer concern; per-tick
+   * pose writes remain the bridge's exclusive territory. Poses for unknown
+   * ids are silently skipped (defensive). Yaw is offset by
+   * `ASSET_FORWARD_YAW_OFFSET` so robots face along +X.
+   */
+  applyInitialPoses(poses: readonly RobotPose[]): void;
   dispose(): void;
 }
 
@@ -574,6 +595,15 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
     scene.add(obj);
   }
 
+  function applyInitialPoses(poses: readonly RobotPose[]): void {
+    for (const pose of poses) {
+      const inst = instanceById.get(pose.id);
+      if (!inst) continue;
+      inst.root.position.set(pose.x, pose.y, pose.z);
+      inst.root.rotation.y = pose.yaw + ASSET_FORWARD_YAW_OFFSET;
+    }
+  }
+
   function dispose(): void {
     if (disposed) return;
     disposed = true;
@@ -632,6 +662,7 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
     getAllInstances,
     getScene,
     addToScene,
+    applyInitialPoses,
     dispose,
   };
 }

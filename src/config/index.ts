@@ -262,7 +262,7 @@ export const CONFIG = {
        * the slow end up and pushing mid-tier values noticeably faster.
        * Range 0–1; lower = wider spread, higher = tighter pack.
        */
-      minSpeedStat: 0.55,
+      minSpeedStat: 0.72,
 
       /**
        * How many metres the bridge crumble line trails behind the leading

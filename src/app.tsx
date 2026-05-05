@@ -25,12 +25,15 @@ import {
   GAUNTLET_PIT_DROP_DURATION_TICKS,
 } from '@/arena-visuals/gauntlet-traps';
 import { runSim, type EventModule, type TimelineEvent } from '@/sim/engine';
+import { createRng } from '@/sim/rng';
 import { createSprintRaceModule } from '@/sim/sprint-race';
 import { createMazeRaceModule } from '@/sim/maze-race';
 import { createObstacleGauntletModule } from '@/sim/obstacle-gauntlet';
 import { generateMazeLayout } from '@/sim/maze';
-import { loadRoster, type RobotRoster } from '@/sim/robot-roster';
+import { loadRoster, withSpeedSource, type RobotRoster } from '@/sim/robot-roster';
 import { loadArena, type Arena } from '@/sim/arena';
+import type { SpeedSourceTrait } from '@/sim/trait-to-stat';
+import { TraitWheel } from '@/ui/trait-wheel';
 import { CONFIG } from '@/config';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
@@ -455,11 +458,16 @@ function buildArenaSetup(opts: BuildArenaSetupOptions): ArenaSetup {
   }
 }
 
-/** Per-mounted-scene state used by the camera effect to attach handlers. */
+/** Per-mounted-scene state shared by Phase A (scene mount), Phase B
+ *  (sim run + bridge), and the camera effect. Phase A populates this;
+ *  Phase B reads it once `speedSourceTrait` is committed. */
 interface SceneRefs {
   renderer: ReturnType<typeof createRenderer>;
   camera: THREE.PerspectiveCamera;
   built: ArenaSetup;
+  arena: Arena;
+  baseRoster: RobotRoster;
+  switcher: ReturnType<typeof createAnimationStateSwitcher>;
 }
 
 export function App() {
@@ -483,6 +491,11 @@ export function App() {
   // camera effect keys off this so it knows when refs are ready.
   const [sceneVersion, setSceneVersion] = useState(0);
   const sceneRefs = useRef<SceneRefs | null>(null);
+  // Trait-wheel state. `speedSourceTrait` is null while the wheel is
+  // spinning; gets set once the wheel commits, gating Phase B.
+  // `wheelSpinKey` is bumped on every Race Again to restart the wheel.
+  const [speedSourceTrait, setSpeedSourceTrait] = useState<SpeedSourceTrait | null>(null);
+  const [wheelSpinKey, setWheelSpinKey] = useState(1);
   const [stats, setStats] = useState<RaceStats>({
     fps: 0,
     robotCount: 0,
@@ -497,6 +510,8 @@ export function App() {
 
   const handleRaceAgain = () => {
     setSeed(pickRandomSeed());
+    setSpeedSourceTrait(null);
+    setWheelSpinKey((k) => k + 1);
     setCameraTargetId(null);
     setWinnerCamSuppressed(false);
   };
@@ -529,11 +544,12 @@ export function App() {
 
     let renderer: ReturnType<typeof createRenderer> | null = null;
     let switcher: ReturnType<typeof createAnimationStateSwitcher> | null = null;
-    let bridge: ReturnType<typeof createSimRendererBridge> | null = null;
-    let cancelFpsSampler: (() => void) | null = null;
     let cancelled = false;
-    const isCancelled = () => cancelled;
 
+    // Phase A — load assets, mount renderer, build scene visuals. Robots
+    // appear at start positions. The sim itself does NOT run yet; that's
+    // gated on the trait-wheel committing a `speedSourceTrait`, which
+    // triggers the Phase B effect below.
     (async () => {
       try {
         // Arena loads first so the renderer can size its ground plane to
@@ -546,7 +562,6 @@ export function App() {
         if (cancelled) return;
         // Stash roster for the WinnerCard.
         setRoster(loadedRoster);
-        const roster = loadedRoster;
 
         const rendererOpts = buildRendererOptions(arena);
         renderer = createRenderer({
@@ -556,40 +571,61 @@ export function App() {
         await renderer.mount(container, camera);
         if (cancelled) return;
 
-        // Build the deterministic race result + visuals + leader rule
-        // for the chosen arena type.
-        const built = buildArenaSetup({ arena, roster, seed, renderer });
+        // Build per-arena scene objects + eventModule. The eventModule does
+        // NOT capture the roster (verified in buildArenaSetup), so Phase B
+        // can safely pass a re-derived roster into runSim later.
+        const built = buildArenaSetup({ arena, roster: loadedRoster, seed, renderer });
         for (const obj of built.sceneObjects) {
           renderer.addToScene(obj);
         }
-        const result = runSim({
-          seed,
-          roster,
+
+        // Place robots at the arena's start grid BEFORE Phase B runs the
+        // sim. Without this, all 85 instances sit stacked at world origin
+        // during the trait-wheel spin (the bridge — sole writer of per-tick
+        // pose — doesn't exist yet during Phase A).
+        //
+        // We mint a fresh rng off the same seed runSim will use; init()
+        // consumes draws to permute start slots, so the visible start
+        // positions match the eventual sim's start positions exactly.
+        const initialPoses = built.eventModule.init({
+          roster: loadedRoster,
           arena,
-          eventModule: built.eventModule,
-          maxTicks: arena.maxTicks,
+          rng: createRng(seed),
         });
-        const driver = createSimDriver({ result });
+        renderer.applyInitialPoses(initialPoses);
+
+        // Wide "pack preview" camera for the wheel-spin window. Without
+        // this, the follow-leader camera would lock onto stationary
+        // robot 0 and put us right on top of its legs (the leader-cam
+        // doesn't expect a non-moving leader). For arenas with their own
+        // staticCameraPlacement (maze), use that. For sprint/gauntlet,
+        // pull back along -X and up so the start grid + course read
+        // clearly. The camera effect (below) will hand off to whatever
+        // tracking mode is correct once Phase B fires.
+        if (built.staticCameraPlacement) {
+          const p = built.staticCameraPlacement.position;
+          const l = built.staticCameraPlacement.lookAt;
+          camera.position.set(p.x, p.y, p.z);
+          camera.lookAt(l.x, l.y, l.z);
+        } else {
+          camera.position.set(-22, 14, 0);
+          camera.lookAt(18, 1, 0);
+        }
 
         switcher = createAnimationStateSwitcher(renderer);
-        bridge = createSimRendererBridge({
-          renderer,
-          switcher,
-          driver,
-          onEvent: (event) => {
-            if (event.type === 'simEnd') {
-              setStats((s) => ({ ...s, winnerId: event.winnerId }));
-            }
-            built.onSimEvent?.(event);
-          },
-        });
-        bridge.start();
 
         // The camera effect (separate `useEffect`) reads these refs and
         // attaches whatever follow handler matches the current camera
         // target. Doing it here instead of inline keeps switching modes
         // mid-race cheap (no renderer / sim teardown).
-        sceneRefs.current = { renderer, camera, built };
+        sceneRefs.current = {
+          renderer,
+          camera,
+          built,
+          arena,
+          baseRoster: loadedRoster,
+          switcher,
+        };
         setSceneVersion((v) => v + 1);
 
         setStats((s) => ({
@@ -598,15 +634,7 @@ export function App() {
           loadStatus: 'ready',
           seed,
           arenaId: arena.id,
-          totalTicks: result.ticks,
         }));
-
-        cancelFpsSampler = startFpsSampler({
-          driver,
-          visualsUpdate: built.visualsUpdate,
-          setStats,
-          isCancelled,
-        });
       } catch (err: unknown) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
@@ -616,17 +644,65 @@ export function App() {
 
     return () => {
       cancelled = true;
-      cancelFpsSampler?.();
-      // Disposal order: bridge (writes to instance.root) → switcher
-      // (reads renderer-owned mixers) → renderer. The camera handle is
-      // owned by the camera effect, which tears down on `sceneVersion`
-      // change before the new scene mounts — no double-dispose risk.
+      // Phase B's cleanup runs FIRST (later-declared effect tears down
+      // first in Preact), so by the time we get here the bridge / driver
+      // / fpsSampler are already disposed. Just tear down Phase A state.
       sceneRefs.current = null;
-      bridge?.dispose();
       switcher?.dispose();
       renderer?.dispose();
     };
   }, [seed]);
+
+  // Phase B — runs the sim and starts the renderer bridge once Phase A's
+  // scene is ready AND the trait-wheel has committed a `speedSourceTrait`.
+  // Re-derives the roster against the chosen trait so high-{trait} robots
+  // get the speed bonus for this race only. Idle while trait is null.
+  useEffect(() => {
+    if (speedSourceTrait === null) return;
+    if (sceneVersion === 0) return;
+    const refs = sceneRefs.current;
+    if (!refs) return;
+
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+
+    const racingRoster = withSpeedSource(refs.baseRoster, speedSourceTrait);
+    const result = runSim({
+      seed,
+      roster: racingRoster,
+      arena: refs.arena,
+      eventModule: refs.built.eventModule,
+      maxTicks: refs.arena.maxTicks,
+    });
+    const driver = createSimDriver({ result });
+    const bridge = createSimRendererBridge({
+      renderer: refs.renderer,
+      switcher: refs.switcher,
+      driver,
+      onEvent: (event) => {
+        if (event.type === 'simEnd') {
+          setStats((s) => ({ ...s, winnerId: event.winnerId }));
+        }
+        refs.built.onSimEvent?.(event);
+      },
+    });
+    bridge.start();
+
+    setStats((s) => ({ ...s, totalTicks: result.ticks }));
+
+    const cancelFpsSampler = startFpsSampler({
+      driver,
+      visualsUpdate: refs.built.visualsUpdate,
+      setStats,
+      isCancelled,
+    });
+
+    return () => {
+      cancelled = true;
+      cancelFpsSampler();
+      bridge.dispose();
+    };
+  }, [seed, speedSourceTrait, sceneVersion]);
 
   // Camera effect — toggles between arena cam (static / leader-follow,
   // depending on arena type), over-the-shoulder for a specific robot,
@@ -679,6 +755,12 @@ export function App() {
       refs.camera.position.set(p.x, p.y, p.z);
       refs.camera.lookAt(l.x, l.y, l.z);
       handle = { dispose: () => {} };
+    } else if (speedSourceTrait === null) {
+      // Wheel still spinning. Phase A already positioned the camera at
+      // a wide pack-preview view; leave it alone until the trait commits
+      // and Phase B kicks off the sim. Activating follow-leader now
+      // would lock onto stationary robot 0 and frame just its legs.
+      handle = { dispose: () => {} };
     } else {
       const f = createFollowLeaderCamera({
         camera: refs.camera,
@@ -699,6 +781,7 @@ export function App() {
     winnerCamSuppressed,
     stats.isDone,
     stats.winnerId,
+    speedSourceTrait,
   ]);
 
   return (
@@ -714,6 +797,9 @@ export function App() {
       ) : (
         <DevHud stats={stats} />
       )}
+      {/* Trait-wheel shows in both modes (peek = player view, non-peek =
+          dev view). Both want per-race variance. */}
+      <TraitWheel spinKey={wheelSpinKey} onCommit={setSpeedSourceTrait} />
       <CameraControl
         targetId={cameraTargetId}
         robotCount={stats.robotCount || CONFIG.renderer.robotCount}

@@ -35,6 +35,7 @@ function makeFakeRenderer(
     getAllInstances: () => instances,
     getScene: () => new THREE.Scene(),
     addToScene: () => {},
+    applyInitialPoses: () => {},
     dispose: () => {},
   };
 }

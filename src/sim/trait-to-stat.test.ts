@@ -1,6 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { CONFIG } from '@/config';
-import { deriveStats, type RobotTraits, type SimStats } from '@/sim/trait-to-stat';
+import {
+  deriveStats,
+  type RobotTraits,
+  type SimStats,
+  type SpeedSourceTrait,
+} from '@/sim/trait-to-stat';
 
 const ZERO_TRAITS: RobotTraits = {
   fullSend: 0,
@@ -202,6 +207,59 @@ describe('deriveStats — coefficient sourcing (AC10, R5)', () => {
     (CONFIG as { sim: { traitToStat: { speed: { base: number } } } }).sim.traitToStat.speed.base = sentinel;
     const stats = deriveStats(ZERO_TRAITS);
     expect(stats.speed).toBe(sentinel);
+  });
+});
+
+describe('deriveStats — speedSourceTrait override', () => {
+  // The trait-wheel feature picks one of the 5 traits per race to drive
+  // `stat.speed`. With the default arg, behaviour is unchanged (covered by
+  // the worked-example tests above). These tests confirm:
+  //   - Each trait key produces the expected stat.speed.
+  //   - Only stat.speed changes; the other six stats are unaffected.
+
+  const k = CONFIG.sim.traitToStat;
+
+  it('default arg matches no-arg behaviour for fullSend driver', () => {
+    expect(deriveStats(RHAPSODY_Z)).toEqual(
+      deriveStats(RHAPSODY_Z, { speedSourceTrait: 'fullSend' }),
+    );
+  });
+
+  it.each<SpeedSourceTrait>(['fullSend', 'degen', 'cipher', 'doubter', 'altruist'])(
+    'speedSourceTrait=%s drives stat.speed off the named trait',
+    (trait) => {
+      const stats = deriveStats(AACK_PAACK_1, { speedSourceTrait: trait });
+      const expectedSpeed =
+        k.speed.base + k.speed.fullSendCoeff * (AACK_PAACK_1[trait] / 100);
+      expect(stats.speed).toBeCloseTo(expectedSpeed, 9);
+    },
+  );
+
+  it('changing speedSourceTrait does not change other stats', () => {
+    const otherKeys: (keyof SimStats)[] = [
+      'acceleration',
+      'handling',
+      'pathfinding',
+      'caution',
+      'chaos',
+      'grace',
+    ];
+    const baseline = deriveStats(RHAPSODY_Z);
+    for (const trait of ['degen', 'cipher', 'doubter', 'altruist'] as SpeedSourceTrait[]) {
+      const swapped = deriveStats(RHAPSODY_Z, { speedSourceTrait: trait });
+      for (const key of otherKeys) {
+        expect(swapped[key]).toBeCloseTo(baseline[key], 9);
+      }
+    }
+  });
+
+  it('AACK PAACK 1 with degen as speed driver is FAST (validates the player-agency feature)', () => {
+    // AACK PAACK 1 has fullSend=1 (slow by default) but degen=96 (max chaos).
+    // With degen driving speed, the same robot should now have stat.speed
+    // near the top of the range (≈ Rhapsody Z's default speed).
+    const aack = deriveStats(AACK_PAACK_1, { speedSourceTrait: 'degen' });
+    const z = deriveStats(RHAPSODY_Z);
+    expect(aack.speed).toBeGreaterThan(z.speed); // 1.268 > 1.22
   });
 });
 
