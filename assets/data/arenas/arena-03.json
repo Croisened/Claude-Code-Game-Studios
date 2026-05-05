@@ -15,14 +15,14 @@
       { "xStart": 60, "xEnd": 78 }
     ],
     "hammers": [
-      { "x": 110, "killRadius": 1.0, "cycleTicks": 80, "downStartTick": 0, "downEndTick": 20 },
-      { "x": 128, "killRadius": 1.0, "cycleTicks": 80, "downStartTick": 28, "downEndTick": 48 },
-      { "x": 146, "killRadius": 1.0, "cycleTicks": 80, "downStartTick": 56, "downEndTick": 76 }
+      { "x": 110, "killRadius": 2.0, "cycleTicks": 80, "downStartTick": 0, "downEndTick": 20 },
+      { "x": 128, "killRadius": 2.0, "cycleTicks": 80, "downStartTick": 28, "downEndTick": 48 },
+      { "x": 146, "killRadius": 2.0, "cycleTicks": 80, "downStartTick": 56, "downEndTick": 76 }
     ],
     "bridge": {
       "xStart": 175,
       "xEnd": 220,
-      "crumbleSpeedMps": 3.0
+      "crumbleSpeedMps": 7.0
     }
   }
 }

@@ -122,9 +122,11 @@ export interface PitZone {
  * window spans the cycle boundary), though arena-03 v1 keeps every
  * window inside one cycle.
  *
- * `killRadius` is metres along the +X axis. A robot is hit if
- * `|pose.x - hammer.x| < killRadius` AND the hammer is currently
- * down.
+ * `killRadius` is metres in the 2D XZ plane measured from the hammer
+ * head's world-space position. The head's X is always `hammer.x` (the
+ * arm rotates in the YZ plane); head Z derives from the arm angle at the
+ * current tick. A robot is hit if its 2D XZ distance to the head is
+ * < `killRadius` AND the hammer is in its down window.
  */
 export interface HammerSpec {
   readonly x: number;

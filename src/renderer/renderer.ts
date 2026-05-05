@@ -124,6 +124,20 @@ export interface GroundExtents {
   readonly centerZ?: number;
 }
 
+/**
+ * A rectangular hole punched out of the ground plane, in WORLD XZ
+ * coordinates. The ground keeps its outer rectangle (sized via
+ * `groundExtents`) and the listed rectangles become triangulated holes.
+ * Used by the obstacle-gauntlet to expose the void below pit-trap doors
+ * so falling robots are seen against the black background, not the floor.
+ */
+export interface GroundHole {
+  readonly xStart: number;
+  readonly xEnd: number;
+  readonly zStart: number;
+  readonly zEnd: number;
+}
+
 export interface CreateRendererOptions {
   /** Test seam: factory for the WebGLRenderer. Defaults to `new THREE.WebGLRenderer(...)`. */
   webGLRendererFactory?: WebGLRendererFactory;
@@ -157,6 +171,14 @@ export interface CreateRendererOptions {
    * reads as a path over a void.
    */
   backgroundColor?: THREE.ColorRepresentation;
+  /**
+   * Optional rectangular holes cut out of the ground plane. When non-empty
+   * the ground is built from `THREE.ShapeGeometry` instead of a flat
+   * `PlaneGeometry`; otherwise the existing PlaneGeometry path is kept
+   * (so the default sprint-race / maze ground is unchanged). Used by the
+   * gauntlet to remove floor under pit-trap doors.
+   */
+  groundHoles?: readonly GroundHole[];
 }
 
 // -----------------------------------------------------------------------------
@@ -238,13 +260,15 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
     rim.position.set(...RIM_POSITION);
     s.add(rim);
 
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(groundExtents.sizeX, groundExtents.sizeZ),
-      new THREE.MeshStandardMaterial({
-        color: opts.groundColor ?? GROUND_COLOR,
-        roughness: GROUND_ROUGHNESS,
-      }),
-    );
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: opts.groundColor ?? GROUND_COLOR,
+      roughness: GROUND_ROUGHNESS,
+    });
+    const groundGeom: THREE.BufferGeometry =
+      opts.groundHoles && opts.groundHoles.length > 0
+        ? buildGroundGeometryWithHoles(groundExtents, opts.groundHoles)
+        : new THREE.PlaneGeometry(groundExtents.sizeX, groundExtents.sizeZ);
+    const ground = new THREE.Mesh(groundGeom, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(groundExtents.centerX, 0, groundExtents.centerZ);
     s.add(ground);
@@ -526,4 +550,44 @@ function disposeMaterial(mat: THREE.Material): void {
   const m = mat as THREE.MeshStandardMaterial;
   m.map?.dispose?.();
   m.dispose?.();
+}
+
+/**
+ * Build a ground geometry as a single rectangular Shape with rectangular
+ * holes punched out. Vertices are emitted in the shape's local XY plane;
+ * the caller applies the same `rotation.x = -π/2` and `position` as the
+ * unholed PlaneGeometry path, so shape Y maps to world Z and the ground
+ * lands in the same world-space slot.
+ *
+ * Outer rect winds CCW; holes wind CW (Three.js Shape convention).
+ * Hole rectangles are converted from world XZ to shape-local by
+ * subtracting the ground centre.
+ */
+function buildGroundGeometryWithHoles(
+  groundExtents: Required<GroundExtents>,
+  holes: readonly GroundHole[],
+): THREE.ShapeGeometry {
+  const halfX = groundExtents.sizeX / 2;
+  const halfZ = groundExtents.sizeZ / 2;
+  const shape = new THREE.Shape();
+  shape.moveTo(-halfX, -halfZ);
+  shape.lineTo(halfX, -halfZ);
+  shape.lineTo(halfX, halfZ);
+  shape.lineTo(-halfX, halfZ);
+  shape.closePath();
+  for (const h of holes) {
+    const x0 = h.xStart - groundExtents.centerX;
+    const x1 = h.xEnd - groundExtents.centerX;
+    const z0 = h.zStart - groundExtents.centerZ;
+    const z1 = h.zEnd - groundExtents.centerZ;
+    const path = new THREE.Path();
+    // CW relative to the CCW outer.
+    path.moveTo(x0, z0);
+    path.lineTo(x0, z1);
+    path.lineTo(x1, z1);
+    path.lineTo(x1, z0);
+    path.closePath();
+    shape.holes.push(path);
+  }
+  return new THREE.ShapeGeometry(shape);
 }

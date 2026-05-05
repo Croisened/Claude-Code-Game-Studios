@@ -164,8 +164,8 @@ describe('obstacle-gauntlet trap mechanics', () => {
       const frame = result.poseFrames[strike.tick];
       const x = frame.data[strike.robotId * 5 + 1];
       const closestHammerDist = Math.min(...hammerXs.map((hx) => Math.abs(hx - x)));
-      // killRadius = 1.0 in arena-03; allow tiny float slack.
-      expect(closestHammerDist).toBeLessThan(1.05);
+      // killRadius = 2.0 in arena-03 (2D XZ check; X distance ≤ killRadius).
+      expect(closestHammerDist).toBeLessThan(2.05);
     }
   });
 

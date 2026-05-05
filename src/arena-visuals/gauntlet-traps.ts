@@ -2,7 +2,10 @@
  * Obstacle Gauntlet trap visuals (Arena-03).
  *
  * Renders the three trap types:
- *   - **Pit zones** as sunken dark bands on the ground plane.
+ *   - **Pit zones** as twin hinged trap doors that swing open beneath
+ *     a falling robot. The ground itself is cut out at each pit zone
+ *     (see GroundHole in renderer.ts) so when the doors swing the
+ *     camera looks through into the black scene background.
  *   - **Hammers** as pillar + swinging-arm meshes whose rotation reads
  *     directly from the sim tick (sim-authoritative).
  *   - **Crumbling bridge** as a row of plank meshes that hide
@@ -38,12 +41,22 @@ const PIT_DOOR_THICKNESS = 0.18;
 const PIT_DOOR_Y = 0.05;
 const PIT_OPEN_MAX_ANGLE = Math.PI * 0.42; // ~75° drop
 const PIT_OPEN_DURATION_TICKS = 36; // ~600ms at 60Hz
-/** Dark "void" plane below the doors so when they swing open the gap
- *  reads as a hole rather than green ground. */
-const PIT_VOID_COLOR = 0x05060a;
-const PIT_VOID_Y = -0.5;
+// The "void" beneath the doors is now a real hole punched out of the ground
+// (see GroundHole in renderer.ts and the groundHoles wiring in app.tsx for
+// the obstacle-gauntlet path). The previous shallow dark plane at y=-0.5
+// is gone — the pure-black scene background shows through the hole, and
+// falling robots drop into actual empty space.
 
-const HAMMER_PILLAR_HEIGHT = 6.4;
+const HAMMER_PILLAR_HEIGHT = 12.8;
+/**
+ * How far below ground the gauntlet "abyss" extends. The hammer pillars
+ * are rooted at this depth (selling the "we're suspended on a platform"
+ * illusion); pit-fall robots drop to this same depth so they come to
+ * rest at the abyss floor instead of stopping mid-air. Exported so the
+ * app shell can wire the pit-fall animation to the same value.
+ */
+export const GAUNTLET_ABYSS_DEPTH_M = 60;
+const HAMMER_PILLAR_DEPTH_BELOW = GAUNTLET_ABYSS_DEPTH_M;
 const HAMMER_PILLAR_RADIUS = 0.45;
 const HAMMER_PILLAR_COLOR = 0x4a4f5b;
 /**
@@ -51,21 +64,23 @@ const HAMMER_PILLAR_COLOR = 0x4a4f5b;
  * boundary don't visually clip through them. Distance is measured from
  * the course edge (z = ±courseWidth/2) outward into the void; the cross-
  * beam still spans the full pillar-to-pillar gap so the gallows reads
- * as straddling the path.
+ * as straddling the path. With the doubled arm length, the head reaches
+ * z ≈ ±10.98 m at extreme swings — the OUTSET must keep pillars further
+ * outboard than that so the arm doesn't clip through them.
  */
-const HAMMER_PILLAR_OUTSET = 0.6;
+const HAMMER_PILLAR_OUTSET = 2.0;
 const HAMMER_BEAM_HEIGHT = 0.5;
 const HAMMER_BEAM_DEPTH = 0.6;
 const HAMMER_BEAM_COLOR = 0x36373d;
-const HAMMER_ARM_LENGTH = 5.5;
+const HAMMER_ARM_LENGTH = 11.0;
 const HAMMER_ARM_THICKNESS = 0.55;
 const HAMMER_HEAD_SIZE = 1.2;
 const HAMMER_HEAD_COLOR = 0xa53a2a; // rusty industrial red
-const HAMMER_PIVOT_Y = 5.8; // matches beam center
+const HAMMER_PIVOT_Y = 11.6; // matches beam center, near the doubled pillar top
 const HAMMER_ARM_COLOR = 0x36373d;
 /** Max swing angle from vertical-down. < π/2 keeps the head BELOW the
- *  cross-beam — at 0.48π the arm reaches ±5.49 m from the pivot at the
- *  extreme of each swing, fully inside the gallows posts at z = ±8. */
+ *  cross-beam — at 0.48π the arm reaches ±10.98 m from the pivot at the
+ *  extreme of each swing, fully inside the gallows posts at z = ±11. */
 const HAMMER_MAX_SWING_ANGLE = Math.PI * 0.48;
 
 const BRIDGE_PLANK_COUNT = 24;
@@ -75,7 +90,27 @@ const BRIDGE_PLANK_COLOR = 0x6c4628;   // weathered timber
 const BRIDGE_BEAM_COLOR = 0x3b2a18;    // darker rail/beam
 const BRIDGE_RAIL_HEIGHT = 0.9;
 const BRIDGE_RAIL_THICKNESS = 0.18;
-const BRIDGE_Y = 0.05; // just above ground (ground is at y=0)
+/**
+ * Plank surface (top face) sits flush with the ground plane at y=0 so
+ * robots running across the bridge stay at ground height — no visible
+ * "step up" onto raised planks. The plank body sits below ground in the
+ * bridge's punched-out hole (see groundHoles wiring in app.tsx); when a
+ * plank crumbles it drops straight into the void.
+ */
+const BRIDGE_PLANK_TOP_Y = 0;
+/** Resting Y for the centre of each plank — half the plank height below
+ *  the surface. */
+const BRIDGE_PLANK_CENTER_Y = BRIDGE_PLANK_TOP_Y - BRIDGE_PLANK_HEIGHT / 2;
+/** Rails sit ON the plank surface, extending upward into open air. */
+const BRIDGE_RAIL_BOTTOM_Y = BRIDGE_PLANK_TOP_Y;
+/** How many ticks a plank takes to fall from resting position to invisible. */
+const BRIDGE_PLANK_FALL_TICKS = 14;
+/** How far (metres) each plank drops during its fall animation. */
+const BRIDGE_PLANK_FALL_DEPTH_M = 5.0;
+/** Backward tilt (radians) added to the plank as it falls — its trailing
+ *  edge (the side the robot came from) drops first, so the plank tips
+ *  into the void behind the runner instead of sinking flat. ~32°. */
+const BRIDGE_PLANK_FALL_TILT_RAD = 0.55;
 
 // --- Pit trap-door --------------------------------------------------
 
@@ -108,20 +143,6 @@ function createPitTrap(
   const length = zone.xEnd - zone.xStart;
   const halfW = courseWidth / 2;
   const cx = (zone.xStart + zone.xEnd) / 2;
-
-  // Void plane below the doors. Spans both door halves so the dark
-  // surface is visible through the gap when doors are open.
-  const voidGeom = new THREE.PlaneGeometry(length, halfW * 2);
-  voidGeom.rotateX(-Math.PI / 2);
-  const voidMat = new THREE.MeshStandardMaterial({
-    color: PIT_VOID_COLOR,
-    roughness: 1,
-    metalness: 0,
-    side: THREE.DoubleSide,
-  });
-  const voidMesh = new THREE.Mesh(voidGeom, voidMat);
-  voidMesh.position.set(cx, PIT_VOID_Y, 0);
-  group.add(voidMesh);
 
   // Shared door material.
   const doorMat = new THREE.MeshStandardMaterial({
@@ -182,10 +203,16 @@ function createHammer(
   // them — see HAMMER_PILLAR_OUTSET docs above.
   const halfSpan = courseWidth / 2 + HAMMER_PILLAR_OUTSET;
 
+  // Pillars span from y = HAMMER_PILLAR_HEIGHT (top, where the cross-beam
+  // sits) down to y = -HAMMER_PILLAR_DEPTH_BELOW (deep into the void).
+  // The visible above-ground segment is unchanged; the below-ground
+  // segment is what gives the "we're up on a high platform" feeling.
+  const pillarTotalHeight = HAMMER_PILLAR_HEIGHT + HAMMER_PILLAR_DEPTH_BELOW;
+  const pillarCenterY = (HAMMER_PILLAR_HEIGHT - HAMMER_PILLAR_DEPTH_BELOW) / 2;
   const pillarGeom = new THREE.CylinderGeometry(
     HAMMER_PILLAR_RADIUS,
     HAMMER_PILLAR_RADIUS * 1.15,
-    HAMMER_PILLAR_HEIGHT,
+    pillarTotalHeight,
     16,
   );
   const structureMat = new THREE.MeshStandardMaterial({
@@ -195,7 +222,7 @@ function createHammer(
   });
   for (const sign of [1, -1]) {
     const pillar = new THREE.Mesh(pillarGeom, structureMat);
-    pillar.position.set(0, HAMMER_PILLAR_HEIGHT / 2, sign * halfSpan);
+    pillar.position.set(0, pillarCenterY, sign * halfSpan);
     group.add(pillar);
   }
 
@@ -294,8 +321,10 @@ function hammerArmAngle(spec: HammerSpec, tickFloat: number): number {
 
 interface BridgeHandle {
   spec: BridgeSpec;
-  planks: THREE.Mesh[]; // one per slice; visibility toggles on crumble
+  planks: THREE.Mesh[]; // one per slice
   plankXEnds: number[]; // each plank's right-edge x in world space
+  /** Tick at which each plank began its fall, or null if not yet falling. */
+  plankCrumbleTick: (number | null)[];
 }
 
 function createBridge(bridge: BridgeSpec, courseWidth: number): {
@@ -322,13 +351,15 @@ function createBridge(bridge: BridgeSpec, courseWidth: number): {
     metalness: 0,
   });
 
-  // Side rails (continuous, do NOT crumble — visual frame for the planks)
+  // Side rails (continuous, do NOT crumble — visual frame for the planks).
+  // Sit on the plank surface and extend upward, so they remain visible
+  // above the ground even after the planks have fallen away.
   const railGeom = new THREE.BoxGeometry(length, BRIDGE_RAIL_HEIGHT, BRIDGE_RAIL_THICKNESS);
   for (const sign of [1, -1]) {
     const rail = new THREE.Mesh(railGeom, beamMat);
     rail.position.set(
       (bridge.xStart + bridge.xEnd) / 2,
-      BRIDGE_Y + BRIDGE_RAIL_HEIGHT / 2,
+      BRIDGE_RAIL_BOTTOM_Y + BRIDGE_RAIL_HEIGHT / 2,
       sign * (platformWidth / 2),
     );
     group.add(rail);
@@ -345,13 +376,14 @@ function createBridge(bridge: BridgeSpec, courseWidth: number): {
   for (let i = 0; i < BRIDGE_PLANK_COUNT; i++) {
     const cx = bridge.xStart + plankWidth * (i + 0.5);
     const plank = new THREE.Mesh(plankGeom, plankMat);
-    plank.position.set(cx, BRIDGE_Y + BRIDGE_PLANK_HEIGHT / 2, 0);
+    plank.position.set(cx, BRIDGE_PLANK_CENTER_Y, 0);
     group.add(plank);
     planks.push(plank);
     plankXEnds.push(bridge.xStart + plankWidth * (i + 1));
   }
 
-  return { group, handle: { spec: bridge, planks, plankXEnds } };
+  const plankCrumbleTick: (number | null)[] = new Array(BRIDGE_PLANK_COUNT).fill(null);
+  return { group, handle: { spec: bridge, planks, plankXEnds, plankCrumbleTick } };
 }
 
 // --- Public API ---------------------------------------------------
@@ -362,15 +394,16 @@ export interface GauntletVisuals {
   readonly group: THREE.Group;
   /**
    * Per-frame update. Call from the App's rAF loop with the current
-   * interpolated sim tick. `bridgeEnteredTick` is the sim state's
-   * record of when the first robot crossed the bridge entrance, or
-   * `null` if no robot has entered yet (crumble dormant).
+   * interpolated sim tick and the world-X of the bridge crumble line
+   * (computed by the app from the leader's on-bridge position, mirroring
+   * the sim's leader-tracking crumble logic). `crumbleX = null` means
+   * no robot has entered the bridge yet — crumble is dormant.
    *
-   * Side effects: sets hammer arm rotations; toggles plank visibility;
-   * sets pit-door rotations based on `lastBumpTick` per zone. No
-   * allocations per frame.
+   * Side effects: sets hammer arm rotations; animates plank fall + tilt
+   * based on crumbleX; sets pit-door rotations based on `lastBumpTick`
+   * per zone. No allocations per frame.
    */
-  update(tickFloat: number, bridgeEnteredTick: number | null, tickRateHz: number): void;
+  update(tickFloat: number, crumbleX: number | null): void;
   /**
    * Trigger a pit-trap-door opening at the given world x. The doors of
    * whichever pit zone contains `x` swing open and fade closed over
@@ -411,11 +444,7 @@ export function createGauntletTraps(arena: Arena): GauntletVisuals {
   );
   root.add(bridgeGroup);
 
-  function update(
-    tickFloat: number,
-    bridgeEnteredTick: number | null,
-    tickRateHz: number,
-  ): void {
+  function update(tickFloat: number, crumbleX: number | null): void {
     // Hammer rotation. Pivot rotates around the WORLD X axis so the
     // arm swings in the YZ plane (perpendicular to the robot's motion
     // along +X) — the head crosses the lane rather than sweeping
@@ -438,25 +467,41 @@ export function createGauntletTraps(arena: Arena): GauntletVisuals {
       p.door1.rotation.x = -angle;
       p.door2.rotation.x = angle;
     }
-    // Bridge crumble — hide planks whose right-edge x has been crossed
-    // by the crumble line. Once hidden, planks stay hidden for the rest
-    // of the race (no resurrection).
-    if (bridgeEnteredTick !== null) {
-      const ticksSince = tickFloat - bridgeEnteredTick;
-      const crumbleX =
-        bridgeHandle.spec.xStart +
-        bridgeHandle.spec.crumbleSpeedMps * (ticksSince / tickRateHz);
+    // Bridge crumble — planks past the crumble line fall and disappear.
+    // Each plank records the tick it started falling; subsequent frames
+    // animate it with gravity-like acceleration on Y plus a backward
+    // tilt around Z (its -X / trailing edge drops first), so the plank
+    // tips into the void behind the runner rather than slumping flat.
+    if (crumbleX !== null) {
       for (let i = 0; i < bridgeHandle.planks.length; i++) {
-        if (bridgeHandle.plankXEnds[i] < crumbleX && bridgeHandle.planks[i].visible) {
-          bridgeHandle.planks[i].visible = false;
+        const plank = bridgeHandle.planks[i];
+        if (!plank.visible) continue; // already gone
+        if (bridgeHandle.plankXEnds[i] < crumbleX) {
+          // Start the fall timer the first frame the crumble line passes.
+          if (bridgeHandle.plankCrumbleTick[i] === null) {
+            bridgeHandle.plankCrumbleTick[i] = tickFloat;
+          }
+          const fallProgress = Math.min(
+            1,
+            (tickFloat - bridgeHandle.plankCrumbleTick[i]!) / BRIDGE_PLANK_FALL_TICKS,
+          );
+          // Quadratic Y drop = gravity acceleration (slow start, fast end).
+          plank.position.y =
+            BRIDGE_PLANK_CENTER_Y - fallProgress * fallProgress * BRIDGE_PLANK_FALL_DEPTH_M;
+          // Linear tilt — positive rotation.z drops the plank's -X edge
+          // (the side the robot came from) so the plank tips backward.
+          plank.rotation.z = fallProgress * BRIDGE_PLANK_FALL_TILT_RAD;
+          if (fallProgress >= 1) plank.visible = false;
         }
       }
     } else {
-      // Race not yet on bridge — ensure all planks visible (idempotent).
+      // Race not yet on bridge — restore all planks (idempotent reset).
       for (let i = 0; i < bridgeHandle.planks.length; i++) {
-        if (!bridgeHandle.planks[i].visible) {
-          bridgeHandle.planks[i].visible = true;
-        }
+        const plank = bridgeHandle.planks[i];
+        plank.visible = true;
+        plank.position.y = BRIDGE_PLANK_CENTER_Y;
+        plank.rotation.z = 0;
+        bridgeHandle.plankCrumbleTick[i] = null;
       }
     }
   }

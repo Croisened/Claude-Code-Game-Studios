@@ -252,6 +252,27 @@ export const CONFIG = {
       /** Course-velocity baseline in m/s. Same scale as sprint-race. */
       baseSpeedMps: 6,
 
+      /**
+       * Lower bound of the per-tick motion formula's effective stat.speed.
+       * Applied as a linear remap, NOT a clamp:
+       *   speedStat = minSpeedStat + (1 - minSpeedStat) * stat.speed
+       * stat.speed = 0 maps here; stat.speed = 1 maps to 1; everything
+       * in between scales linearly. Preserves the relative speed
+       * ordering (so the pack still spreads out by skill) while lifting
+       * the slow end up and pushing mid-tier values noticeably faster.
+       * Range 0–1; lower = wider spread, higher = tighter pack.
+       */
+      minSpeedStat: 0.55,
+
+      /**
+       * How many metres the bridge crumble line trails behind the leading
+       * on-bridge robot. The crumble follows the leader by construction,
+       * so leaders ALWAYS escape; robots that fall further than this
+       * gap behind the leader fall through. Smaller = more dramatic
+       * (planks drop right behind), larger = forgiving for the pack.
+       */
+      bridgeTrailMeters: 2.0,
+
       /** Multiplier on velocity from caution. Range 0–0.5. */
       cautionScale: 0.2,
 
@@ -443,6 +464,27 @@ export const CONFIG = {
       // to track corner turns while smoothing high-frequency wobble
       // when the leader id rotates within the hysteresis band.
       lerpRatePerSecond: 2.5,
+    },
+    /**
+     * Gauntlet follow framing — low and well ahead of the leader, looking
+     * back so the trailing pack, hammers, and pit doors are visible
+     * behind the lead robot. Sprint's high-overhead view loses the trap
+     * drama; this winner-cam-height perch keeps traps in silhouette as
+     * robots approach them.
+     */
+    gauntletFollow: {
+      /** Camera 18m ahead of the leader along +X. */
+      aheadOffsetX: 18,
+      /** Matches WinnerCamera CAM_OFFSET_Y so cuts in/out feel level. */
+      offsetY: 6,
+      /** Modest spectator-side offset; the course is only 18m wide. */
+      offsetZ: 7,
+      /** lookAt 10m BEHIND the leader so the field trailing them sits
+       *  near frame centre — not the empty bridge ahead. */
+      lookAtAheadX: -10,
+      /** Up-bias so robot torsos sit near frame centre rather than feet. */
+      lookAtY: 1.5,
+      lerpRatePerSecond: 4.0,
     },
     follow: {
       /** Camera offset ahead of leader along +X. Positive = camera leads. */

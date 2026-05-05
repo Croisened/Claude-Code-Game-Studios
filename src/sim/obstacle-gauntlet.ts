@@ -33,7 +33,7 @@ import {
   type TickContext,
   type TickResult,
 } from '@/sim/engine';
-import type { Arena, BridgeSpec, HammerSpec, PitZone } from '@/sim/arena';
+import { shuffledStartSlots, type Arena, type BridgeSpec, type HammerSpec, type PitZone } from '@/sim/arena';
 import type { RobotRoster } from '@/sim/robot-roster';
 
 const ELIM_REASON_PIT_FALL = 'pit_fall';
@@ -41,19 +41,30 @@ const ELIM_REASON_HAMMER_STRIKE = 'hammer_strike';
 const ELIM_REASON_BRIDGE_FELL = 'bridge_fell';
 const ELIM_REASON_RACE_OVER = 'race_over';
 
+// Hammer arm geometry — must stay in sync with HAMMER_ARM_LENGTH and
+// HAMMER_MAX_SWING_ANGLE in gauntlet-traps.ts. The sim derives the head's
+// world-space XZ position from these values; the renderer draws the arm
+// using the same constants, so the kill zone tracks the visual head exactly.
+const HAMMER_ARM_LENGTH_M = 11.0;
+const HAMMER_MAX_SWING_RAD = Math.PI * 0.48;
+
 interface GauntletState {
   /**
-   * Tick the FIRST robot crossed `bridge.xStart` (entered the bridge),
-   * or `null` if no robot has entered yet. Drives the crumble line.
+   * World-space X of the bridge crumble line. The crumble trails the
+   * leading on-bridge robot by `CONFIG.sim.gauntletRace.bridgeTrailMeters`,
+   * monotonically advancing — once a plank position is "crumbled" it
+   * stays crumbled. `null` until the first robot enters the bridge.
+   * Robots whose pose.x is below this AND on the bridge are eliminated
+   * with `bridge_fell`.
    */
-  bridgeEnteredTick: number | null;
+  crumbleX: number | null;
   /** True once a robot has crossed the finish line. */
   finished: boolean;
 }
 
 function initState(): GauntletState {
   return {
-    bridgeEnteredTick: null,
+    crumbleX: null,
     finished: false,
   };
 }
@@ -67,6 +78,22 @@ function initState(): GauntletState {
 function isHammerDown(hammer: HammerSpec, tick: number): boolean {
   const phase = ((tick % hammer.cycleTicks) + hammer.cycleTicks) % hammer.cycleTicks;
   return phase >= hammer.downStartTick && phase < hammer.downEndTick;
+}
+
+/**
+ * Compute the hammer arm's angle (radians, rotation around world X) at the
+ * given sim tick. Mirrors hammerArmAngle() in gauntlet-traps.ts exactly —
+ * keep both in sync when changing the swing formula.
+ *
+ * Returns 0 at the centre of the down window (arm straight down, head at
+ * z = 0). Positive angle → head displaced in -Z; negative → +Z.
+ */
+function hammerArmAngle(spec: HammerSpec, tick: number): number {
+  const phase = ((tick % spec.cycleTicks) + spec.cycleTicks) % spec.cycleTicks;
+  const downCenter = (spec.downStartTick + spec.downEndTick) / 2;
+  const offset =
+    ((phase - downCenter + spec.cycleTicks) % spec.cycleTicks) / spec.cycleTicks;
+  return HAMMER_MAX_SWING_RAD * Math.sin(2 * Math.PI * offset);
 }
 
 /**
@@ -148,7 +175,14 @@ function advanceMotion(
     const stat = ctx.roster[id].stats;
     const cautionFactor = 1 - stat.caution * k.cautionScale;
     const jitter = 1 + (ctx.rng() * 2 - 1) * stat.chaos * k.chaosScale;
-    const baseSpeed = k.baseSpeedMps * stat.speed * cautionFactor * jitter;
+    // Linear remap of stat.speed from [0, 1] to [minSpeedStat, 1]. A hard
+    // Math.max would clamp everyone below the floor to the same speed,
+    // bunching the back of the pack into a wall; the remap preserves the
+    // relative spread (each robot's natural speed rank is kept) while
+    // lifting low and mid stats up. stat.speed = 1 still maps to 1, so
+    // the top end is unchanged.
+    const speedStat = k.minSpeedStat + (1 - k.minSpeedStat) * stat.speed;
+    const baseSpeed = k.baseSpeedMps * speedStat * cautionFactor * jitter;
     const slow = hammerSlowdownFactor(hammers, pose.x, stat.caution, ctx.tick);
     const speed = baseSpeed * slow;
 
@@ -200,49 +234,69 @@ function advanceMotion(
     }
   }
 
-  // ---- Phase C: hammer-strike eliminations. Pure tick arithmetic;
-  // no rng. A robot is hit if its pose.x is within `killRadius` of a
-  // hammer that is currently DOWN. Use a small skip-list for already-
-  // eliminated this tick (pit) so we don't double-emit.
+  // ---- Phase C: hammer-strike eliminations. Kill zone: 2D XZ circle of
+  // `killRadius` centred on the hammer head's world-space XZ position.
+  // The head always sits at x = hammer.x (arm rotates in the YZ plane);
+  // its Z derives from the arm angle at the current tick, matching the
+  // rendered pendulum exactly. isHammerDown is a fast broad-phase gate —
+  // head position is only computed during the designated down window.
   for (let h = 0; h < hammers.length; h++) {
     const hammer = hammers[h];
     if (!isHammerDown(hammer, ctx.tick)) continue;
+    const angle = hammerArmAngle(hammer, ctx.tick);
+    // Head Z in world space: arm-local -Y maps to world Z under X-axis
+    // rotation. At angle = 0 the head is at z = 0; positive angle → -Z.
+    const headZ = -HAMMER_ARM_LENGTH_M * Math.sin(angle);
+    const rSq = hammer.killRadius * hammer.killRadius;
     for (let id = 0; id < ctx.poses.length; id++) {
       const pose = ctx.poses[id];
       if (!pose.active) continue;
       if (eliminationsContains(eliminations, id)) continue;
-      if (Math.abs(pose.x - hammer.x) < hammer.killRadius) {
+      const dx = pose.x - hammer.x;
+      const dz = pose.z - headZ;
+      if (dx * dx + dz * dz < rSq) {
         eliminations.push({ robotId: id, reason: ELIM_REASON_HAMMER_STRIKE });
       }
     }
   }
 
-  // ---- Phase D: bridge crumble. The crumble line spawns at
-  // `bridge.xStart` the moment the first active robot enters the
-  // bridge, and advances at `crumbleSpeedMps` m/sec from there.
-  // Robots whose pose.x < crumble line AND pose.x in [xStart, xEnd]
-  // (still on the bridge) → eliminated `bridge_fell`.
+  // ---- Phase D: bridge crumble. The crumble line tracks the leading
+  // on-bridge robot, trailing them by `bridgeTrailMeters`. Monotonic —
+  // once a position is crumbled it stays crumbled. Robots that fall
+  // behind the leader by more than the trail distance get eliminated
+  // with `bridge_fell`. By construction the leader can never be caught,
+  // so leaders always finish; only stragglers fall.
   const bridge = ctx.arena.gauntletConfig?.bridge;
   if (bridge !== undefined) {
-    if (state.bridgeEnteredTick === null) {
-      for (let id = 0; id < ctx.poses.length; id++) {
-        const pose = ctx.poses[id];
-        if (!pose.active) continue;
-        if (pose.x >= bridge.xStart) {
-          state.bridgeEnteredTick = ctx.tick;
-          break;
-        }
+    let leaderOnBridgeX = Number.NEGATIVE_INFINITY;
+    for (let id = 0; id < ctx.poses.length; id++) {
+      const pose = ctx.poses[id];
+      if (!pose.active) continue;
+      if (
+        pose.x >= bridge.xStart &&
+        pose.x <= bridge.xEnd &&
+        pose.x > leaderOnBridgeX
+      ) {
+        leaderOnBridgeX = pose.x;
       }
     }
-    if (state.bridgeEnteredTick !== null) {
-      const ticksSince = ctx.tick - state.bridgeEnteredTick;
-      const crumbleX =
-        bridge.xStart + bridge.crumbleSpeedMps * (ticksSince / CONFIG.sim.tickRateHz);
+    if (leaderOnBridgeX > Number.NEGATIVE_INFINITY) {
+      const desiredCrumbleX = leaderOnBridgeX - k.bridgeTrailMeters;
+      state.crumbleX =
+        state.crumbleX === null
+          ? desiredCrumbleX
+          : Math.max(state.crumbleX, desiredCrumbleX);
+    }
+    if (state.crumbleX !== null) {
       for (let id = 0; id < ctx.poses.length; id++) {
         const pose = ctx.poses[id];
         if (!pose.active) continue;
         if (eliminationsContains(eliminations, id)) continue;
-        if (pose.x < crumbleX && pose.x >= bridge.xStart && pose.x <= bridge.xEnd) {
+        if (
+          pose.x < state.crumbleX &&
+          pose.x >= bridge.xStart &&
+          pose.x <= bridge.xEnd
+        ) {
           eliminations.push({ robotId: id, reason: ELIM_REASON_BRIDGE_FELL });
         }
       }
@@ -295,10 +349,13 @@ export function createObstacleGauntletModule(): EventModule {
   return {
     init(ctx: { roster: RobotRoster; arena: Arena; rng: () => number }): RobotPose[] {
       ensureState();
-      // Reuse the engine's start-grid layout — gauntlets start like
-      // sprint-races (id-deterministic for v1; can adopt seeded
-      // permutation later via shuffledStartSlots).
-      return buildStartPoses(ctx.roster, ctx.arena);
+      // Seed-driven slot permutation — same pattern as sprint-race.
+      // A robot drawing a back-row slot has more course to traverse and
+      // arrives at the pit zone behind the pack; viewer-side variance
+      // prevents the same robot from always being at the front of the
+      // first cull. Determinism preserved: same seed → same shuffle.
+      const slotForId = shuffledStartSlots(ctx.rng, ctx.roster.length);
+      return buildStartPoses(ctx.roster, ctx.arena, slotForId);
     },
 
     tick(ctx: TickContext): TickResult {
