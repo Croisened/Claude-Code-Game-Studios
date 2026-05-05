@@ -149,6 +149,14 @@ export interface CreateRendererOptions {
    * the dark blue-gray that matches the sprint-race sky.
    */
   groundColor?: number;
+  /**
+   * Override the scene background color (any THREE.Color-compatible
+   * input — hex string `'#000000'` or numeric `0x000000`). Defaults to
+   * `SCENE_BACKGROUND` (the dark blue-gray sprint sky). Used by the
+   * gauntlet to drop the horizon to near-black so the narrow course
+   * reads as a path over a void.
+   */
+  backgroundColor?: THREE.ColorRepresentation;
 }
 
 // -----------------------------------------------------------------------------
@@ -210,7 +218,7 @@ export function createRenderer(opts: CreateRendererOptions = {}): Renderer {
 
   function buildScene(): THREE.Scene {
     const s = new THREE.Scene();
-    s.background = new THREE.Color(SCENE_BACKGROUND);
+    s.background = new THREE.Color(opts.backgroundColor ?? SCENE_BACKGROUND);
 
     const ambient = new THREE.AmbientLight(0xffffff, AMBIENT_INTENSITY);
     s.add(ambient);

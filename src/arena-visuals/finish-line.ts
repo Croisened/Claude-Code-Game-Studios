@@ -5,7 +5,14 @@
  * with "ROBO RHAPSODY" lettered in black centered along its length.
  * The strip lies on the XZ plane, perpendicular to the race direction:
  * - X extent: `LINE_THICKNESS` units (a chunky band the leader runs
- *   *over*, not just a hairline marker).
+ *   *over*, not just a hairline marker). The strip's NEAR edge is
+ *   placed at `finishX` and the band extends downstream from there
+ *   (centerX = finishX + LINE_THICKNESS/2). This keeps the band
+ *   entirely past any obstacle that ends at `finishX` — notably the
+ *   gauntlet's crumbling bridge, whose `xEnd` coincides with
+ *   `arena.length`. With center-on-finishX placement the bridge
+ *   planks (which sit slightly above the strip's y) visually covered
+ *   the near half of the band; the shift moves the lettering clear.
  * - Z extent: full `arena.width` (covers the entire course laterally).
  * - Y: a hair above the ground plane (`HEIGHT_OFFSET`) to avoid
  *   z-fighting with the renderer's ground mesh.
@@ -117,7 +124,9 @@ export function createFinishLine(
   texture.rotation = Math.PI / 2;
 
   mesh.rotation.x = -Math.PI / 2; // lay flat on XZ
-  mesh.position.set(finishX, HEIGHT_OFFSET, 0);
+  // Near edge at finishX → centerX = finishX + LINE_THICKNESS/2 so the
+  // band sits entirely downstream of the bridge in the gauntlet arena.
+  mesh.position.set(finishX + LINE_THICKNESS / 2, HEIGHT_OFFSET, 0);
 
   // Ensure the strip renders on top of the ground at z-fighting-free
   // depth even on hardware that interprets HEIGHT_OFFSET conservatively.

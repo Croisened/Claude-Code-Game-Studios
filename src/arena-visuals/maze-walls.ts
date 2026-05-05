@@ -57,21 +57,38 @@ const ORANGE_EMISSIVE = 0x803400;   // subtle warm glow so they pop in shadow
 const ORANGE_EMISSIVE_INTENSITY = 0.18;
 
 /**
- * 8 hand-picked spherical positions (theta, phi) on the canopy surface.
- * `phi ∈ [0.4, 1.2]` keeps oranges in the upper-half + equator band so
- * none look like they fell off the bottom; `theta` spans 2π for ring
- * symmetry. Fixed list keeps the maze deterministic — no rng needed for
- * a purely visual asset.
+ * 14 hand-picked spherical positions (theta, phi) on the canopy
+ * surface. theta spans 2π in evenly-spaced steps for ring symmetry;
+ * phi alternates between an upper-hemisphere band [0.5, 0.95] and an
+ * equator/below band [1.4, 1.7] so EVERY camera angle sees several
+ * oranges — including the Winner Camera which frames the canopy from
+ * below the equator (it sits at y=6 looking at canopy mid-height ≈
+ * y=7.3, so the lower half of the canopy is what dominates the
+ * portrait shot).
+ *
+ * Lower bound `phi=0.4` is the tightest crown (almost on top); upper
+ * bound `phi=1.7` keeps oranges above the trunk (canopy y at phi=1.7
+ * = canopy_center + radius·cos(1.7) ≈ y=6.87, well above
+ * trunk top y=5.2).
+ *
+ * Fixed list keeps the maze deterministic — no rng for a purely
+ * visual asset.
  */
 const ORANGE_POSITIONS: ReadonlyArray<readonly [number, number]> = [
-  [0.2, 0.55],
-  [0.95, 0.85],
-  [1.7, 0.45],
-  [2.4, 1.05],
-  [3.2, 0.65],
-  [4.0, 0.95],
-  [4.85, 0.5],
-  [5.6, 1.15],
+  [0.0, 0.5],
+  [0.45, 1.55],
+  [0.9, 0.7],
+  [1.35, 1.7],
+  [1.8, 0.55],
+  [2.24, 1.45],
+  [2.69, 0.85],
+  [3.14, 1.6],
+  [3.59, 0.6],
+  [4.04, 1.5],
+  [4.49, 0.75],
+  [4.93, 1.4],
+  [5.38, 0.95],
+  [5.83, 1.65],
 ];
 
 export function createMazeWalls(layout: MazeLayout): THREE.Group {

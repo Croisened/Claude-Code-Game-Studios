@@ -1,13 +1,13 @@
 {
   "id": "arena-03",
   "type": "obstacle-gauntlet",
-  "length": 240,
-  "width": 36,
+  "length": 220,
+  "width": 18,
   "maxTicks": 7200,
   "startGrid": {
-    "lanes": 17,
-    "rows": 5,
-    "laneSpacing": 1.8,
+    "lanes": 11,
+    "rows": 8,
+    "laneSpacing": 1.5,
     "rowSpacing": 4.0
   },
   "gauntletConfig": {

@@ -124,8 +124,8 @@ export const CONFIG = {
        * Determinism: pose state is read in id-ascending order, matching
        * the engine's iteration. No `rng()` calls are made.
        */
-      separationRadius: 1.4,
-      separationForceMps: 5.0,
+      separationRadius: 1.8,
+      separationForceMps: 7.0,
       /**
        * |dist| below which two robots are treated as coincident. Their
        * radial push goes to zero as `dist → 0`, so coincident robots
@@ -135,6 +135,26 @@ export const CONFIG = {
        * ticks.
        */
       separationCoincidentEps: 0.05,
+
+      /**
+       * **Forward-block awareness.** When an active neighbor sits
+       * directly ahead of a robot's motion direction within
+       * `forwardBlockDist` AND inside the lateral lane defined by
+       * `forwardBlockLateralRadius`, the robot's forward step scales
+       * by `proximity / forwardBlockDist` — at touching distance the
+       * step goes to zero (full stop), at the far edge it's unchanged.
+       *
+       * Effect: robots queue through narrow corridors instead of
+       * piling into each other. The separation force still pushes
+       * them apart laterally; this rule adds the missing "wait for
+       * the lane to clear" behaviour.
+       *
+       * Determinism: pose state is read in id-ascending order
+       * matching the existing separation rule. No rng. Same seed →
+       * same finish order.
+       */
+      forwardBlockDist: 2.4,
+      forwardBlockLateralRadius: 1.0,
 
       /**
        * Margin from each cell's wall when clamping the post-separation

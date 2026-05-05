@@ -270,6 +270,8 @@ function advanceMotion(
   const sepRSq = sepR * sepR;
   const sepForce = k.separationForceMps;
   const sepEps = k.separationCoincidentEps;
+  const blockDist = k.forwardBlockDist;
+  const blockLatRSq = k.forwardBlockLateralRadius * k.forwardBlockLateralRadius;
   const cellSize = layout.config.cellSize;
   const halfCorridor = cellSize / 2 - k.wallMargin;
 
@@ -347,15 +349,16 @@ function advanceMotion(
     const dz = targetPos.z - pose.z;
     const distToTarget = Math.sqrt(dx * dx + dz * dz);
     if (distToTarget === 0) continue;
-    const step = Math.min(speed * dt, distToTarget);
     const nx = dx / distToTarget;
     const nz = dz / distToTarget;
 
-    // Boids-style separation push from neighbors. Iterates id-sorted to
-    // preserve determinism (mirrors sprint-race's separation rule). We
-    // use full 2D radial push because maze motion is multi-axial.
+    // Single neighbor scan: accumulates Boids separation push AND
+    // computes the forward-block factor in the same loop. id-ascending
+    // iteration preserves determinism — pose state mutates per-id but
+    // we only read others' state.
     let pushX = 0;
     let pushZ = 0;
+    let blockFactor = 1;
     for (let j = 0; j < ctx.poses.length; j++) {
       if (j === id) continue;
       const other = ctx.poses[j];
@@ -363,19 +366,37 @@ function advanceMotion(
       const odx = pose.x - other.x;
       const odz = pose.z - other.z;
       const distSq = odx * odx + odz * odz;
-      if (distSq >= sepRSq) continue;
-      if (distSq < sepEps * sepEps) {
-        // Coincident: deterministic id-based tiebreak so they nudge
-        // apart along +X / -X within a tick.
-        pushX += (id < j ? 1 : -1) * sepForce;
-        continue;
+
+      // Separation: full 2D radial push when within sepR.
+      if (distSq < sepRSq) {
+        if (distSq < sepEps * sepEps) {
+          // Coincident: deterministic id-based tiebreak so they
+          // nudge apart along +X / -X within a tick.
+          pushX += (id < j ? 1 : -1) * sepForce;
+        } else {
+          const dist = Math.sqrt(distSq);
+          const falloff = 1 - dist / sepR;
+          pushX += (odx / dist) * sepForce * falloff;
+          pushZ += (odz / dist) * sepForce * falloff;
+        }
       }
-      const dist = Math.sqrt(distSq);
-      const falloff = 1 - dist / sepR;
-      pushX += (odx / dist) * sepForce * falloff;
-      pushZ += (odz / dist) * sepForce * falloff;
+
+      // Forward-block: if the neighbor sits in our motion direction
+      // within blockDist AND inside the lateral lane, scale our step
+      // toward zero proportional to forward proximity. Lets robots
+      // queue through narrow corridors instead of piling in.
+      const fdx = -odx; // pose → other
+      const fdz = -odz;
+      const forwardDot = fdx * nx + fdz * nz;
+      if (forwardDot <= 0 || forwardDot >= blockDist) continue;
+      const latX = fdx - forwardDot * nx;
+      const latZ = fdz - forwardDot * nz;
+      if (latX * latX + latZ * latZ > blockLatRSq) continue;
+      const prox = forwardDot / blockDist; // ∈ (0, 1)
+      if (prox < blockFactor) blockFactor = prox;
     }
 
+    const step = Math.min(speed * dt * blockFactor, distToTarget);
     pose.x += nx * step + pushX * dt;
     pose.z += nz * step + pushZ * dt;
 

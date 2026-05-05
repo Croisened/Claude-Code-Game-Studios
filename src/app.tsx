@@ -17,7 +17,7 @@ import {
   getMazeFinishTreeWorldPos,
 } from '@/arena-visuals/maze-walls';
 import { createGauntletTraps } from '@/arena-visuals/gauntlet-traps';
-import { runSim, type EventModule } from '@/sim/engine';
+import { runSim, type EventModule, type TimelineEvent } from '@/sim/engine';
 import { createSprintRaceModule } from '@/sim/sprint-race';
 import { createMazeRaceModule } from '@/sim/maze-race';
 import { createObstacleGauntletModule } from '@/sim/obstacle-gauntlet';
@@ -55,6 +55,23 @@ const GROUND_PAD_Z = 40;
  * the way an orange grove looks from above.
  */
 const MAZE_GROUND_COLOR = 0x3a5527;
+
+/**
+ * Gauntlet ground + sky palette. Both pulled near-black so the course
+ * (a single course-width strip — see `arena.width` clamp below) reads
+ * as a narrow path floating in a void. The faint warmth on the floor
+ * (`0x050505`) keeps the ground from disappearing entirely under the
+ * dark robots; pure black would lose the floor under the bridge.
+ */
+const GAUNTLET_BACKGROUND_COLOR = '#000000';
+const GAUNTLET_GROUND_COLOR = 0x050505;
+/**
+ * Padding past the start grid so robots have a step or two of run-up
+ * floor before the gauntlet "begins". Race-direction (X) only — the
+ * lateral (Z) ground extent matches `arena.width` exactly so falling
+ * sideways drops the robot into the void.
+ */
+const GAUNTLET_GROUND_PAD_X = 12;
 
 /** Peek mode hides the dev HUD and shows a minimal training caption +
  *  back link. Triggered by any of the `#peek*` hashes from Landing. */
@@ -120,11 +137,18 @@ interface ArenaSetup {
   /**
    * Per-frame visuals updater. Called by the App's rAF with the
    * current sim tick. Used by gauntlet visuals (hammer rotation,
-   * bridge crumble) to stay sim-authoritative — visuals derive their
-   * state from the same tick the sim does, so browser and harness
-   * agree on what the world looks like.
+   * bridge crumble, pit-fall door open + robot Y-drop) to stay
+   * sim-authoritative — visuals derive their state from the same
+   * tick the sim does, so browser and harness agree on what the
+   * world looks like.
    */
   readonly visualsUpdate?: (tickFloat: number) => void;
+  /**
+   * Sim-event subscriber. Forwarded by the App from the bridge's
+   * onEvent handler. Used by gauntlet to capture `pit_fall`
+   * eliminations and trigger trap-door opens + per-robot Y drops.
+   */
+  readonly onSimEvent?: (event: TimelineEvent) => void;
   /**
    * If set, the camera is positioned to this fixed pose at mount and
    * never updated. Mutually exclusive with `leaderResolver` /
@@ -185,6 +209,12 @@ function buildArenaSetup(opts: BuildArenaSetupOptions): ArenaSetup {
       // matches the tick the sim observes.
       let bridgeEnteredTick: number | null = null;
       const renderer = opts.renderer;
+      // Per-fallen-robot drop animation. Each pit_fall event records
+      // the tick + robot id; visualsUpdate animates them dropping
+      // from y=0 to y=-PIT_DROP_DEPTH_M over PIT_DROP_DURATION_TICKS.
+      const PIT_DROP_DURATION_TICKS = 30; // ~500ms
+      const PIT_DROP_DEPTH_M = 8;
+      const fallenRobots = new Map<number, number>(); // robotId → fallTick
       const visualsUpdate = (tickFloat: number) => {
         if (bridgeEnteredTick === null) {
           const insts = renderer.getAllInstances();
@@ -196,11 +226,43 @@ function buildArenaSetup(opts: BuildArenaSetupOptions): ArenaSetup {
           }
         }
         visuals.update(tickFloat, bridgeEnteredTick, CONFIG.sim.tickRateHz);
+        // Y-drop fallen robots. Bridge stops writing pose for inactive
+        // robots, so once we set instance.y here it stays put without
+        // being overwritten next frame.
+        for (const [robotId, fallTick] of fallenRobots) {
+          const inst = renderer.getInstance(robotId);
+          if (!inst) continue;
+          const ticksSince = tickFloat - fallTick;
+          const dropProgress = Math.min(1, Math.max(0, ticksSince / PIT_DROP_DURATION_TICKS));
+          inst.root.position.y = -dropProgress * PIT_DROP_DEPTH_M;
+        }
+      };
+      const onSimEvent = (event: TimelineEvent) => {
+        if (event.type !== 'elimination') return;
+        if (event.reason !== 'pit_fall') return;
+        const inst = renderer.getInstance(event.robotId);
+        if (!inst) return;
+        // Use the renderer's interpolated x (close to where the robot
+        // was at the fall tick). The sim's authoritative x for that
+        // tick is in result.poseFrames but the renderer's interpolated
+        // value is good enough for "which trap door opened".
+        visuals.triggerPitFall(inst.root.position.x, event.tick);
+        fallenRobots.set(event.robotId, event.tick);
       };
       return {
         eventModule,
         sceneObjects: [createFinishLine(arena), visuals.group],
         visualsUpdate,
+        onSimEvent,
+        // Hero-cam landmark — mirrors the maze branch (which uses the
+        // finish-tree). The winner-camera composes a portrait around the
+        // midpoint of (winner pose, this landmark); the offset constants
+        // in `createWinnerCamera` then sit the camera at ~8.5m at 45° off
+        // that midpoint. The winner halts just past finishX, so feeding
+        // the finish-line center here puts the camera in roughly the
+        // same relationship to the winner that the maze cam has to the
+        // tree-versus-winner pair.
+        winnerCamTarget: { x: arena.length, z: 0 },
       };
     }
 
@@ -222,7 +284,16 @@ function buildArenaSetup(opts: BuildArenaSetupOptions): ArenaSetup {
       // framed. Tilt is roughly 30° off vertical (atan(0.55 / 1.05)),
       // giving an isometric-feeling overhead with enough perspective to
       // read wall heights vs. floor.
-      const halfMaze = Math.max(arena.length, arena.width) / 2;
+      //
+      // STAGING_BUFFER extends the framing past the maze grid edge so the
+      // entrance-staging queues (which spawn ~10m OUTSIDE the cell grid;
+      // see STAGING_PAD + STAGING_ROW_GAP × STAGING_LANES in
+      // `src/sim/maze-race.ts`) all fit within the camera frustum. The
+      // +Z staging is most sensitive to clipping because the camera sits
+      // at +Z looking back toward origin — its FOV is tightest on that
+      // edge.
+      const STAGING_BUFFER = 16;
+      const halfMaze = Math.max(arena.length, arena.width) / 2 + STAGING_BUFFER;
       const camY = halfMaze * 2.1;
       const camZ = halfMaze * 1.1;
       const staticCameraPlacement: StaticCameraPlacement = {
@@ -346,11 +417,24 @@ export function App() {
         // arenas are square grids centered on the origin (length and
         // width are equal). Ground extents differ per arena type.
         const isMaze = arena.type === 'maze-race';
+        const isGauntlet = arena.type === 'obstacle-gauntlet';
         const groundExtents = isMaze
           ? {
               sizeX: arena.length + GROUND_PAD_X * 2,
               sizeZ: arena.width + GROUND_PAD_Z * 2,
               centerX: 0,
+              centerZ: 0,
+            }
+          : isGauntlet
+          ? {
+              // Lateral extent matches the course (= bridge) width
+              // exactly. Robots that drift past ±arena.width/2 fall
+              // off the floor into the black void — the visual cue
+              // that conveys "danger". X gets a small pad so the
+              // start grid + finish band still have floor under them.
+              sizeX: arena.length + GAUNTLET_GROUND_PAD_X * 2,
+              sizeZ: arena.width,
+              centerX: arena.length / 2,
               centerZ: 0,
             }
           : {
@@ -363,7 +447,12 @@ export function App() {
         renderer = createRenderer({
           placePlaceholderGrid: false,
           groundExtents,
-          groundColor: isMaze ? MAZE_GROUND_COLOR : undefined,
+          groundColor: isMaze
+            ? MAZE_GROUND_COLOR
+            : isGauntlet
+            ? GAUNTLET_GROUND_COLOR
+            : undefined,
+          backgroundColor: isGauntlet ? GAUNTLET_BACKGROUND_COLOR : undefined,
         });
         await renderer.mount(container, camera);
         if (cancelled) return;
@@ -392,6 +481,7 @@ export function App() {
             if (event.type === 'simEnd') {
               setStats((s) => ({ ...s, winnerId: event.winnerId }));
             }
+            built.onSimEvent?.(event);
           },
         });
         bridge.start();

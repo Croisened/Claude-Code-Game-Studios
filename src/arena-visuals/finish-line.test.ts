@@ -30,10 +30,13 @@ function stubTexture(): THREE.Texture {
 }
 
 describe('createFinishLine', () => {
-  it('positions the mesh at the final gate.x, on the ground plane', () => {
+  it('positions the mesh just past the final gate.x (near edge at gate)', () => {
     const arena = makeArena();
     const mesh = createFinishLine(arena, { textureFactory: stubTexture });
-    expect(mesh.position.x).toBe(240); // matches arena.gates[last].x
+    const params = (mesh.geometry as THREE.PlaneGeometry).parameters;
+    // Strip is centered at gate.x + thickness/2 so its near edge sits
+    // exactly at the gate (and at the bridge xEnd in gauntlet arenas).
+    expect(mesh.position.x).toBeCloseTo(240 + params.width / 2, 6);
     expect(mesh.position.z).toBe(0);   // centered on track centerline
     expect(mesh.position.y).toBeGreaterThan(0); // raised slightly off floor
     expect(mesh.position.y).toBeLessThan(0.1);  // but only by a hair
@@ -72,7 +75,8 @@ describe('createFinishLine', () => {
       gates: Object.freeze([]),
     }) as Arena;
     const mesh = createFinishLine(arena, { textureFactory: stubTexture });
-    expect(mesh.position.x).toBe(200);
+    const params = (mesh.geometry as THREE.PlaneGeometry).parameters;
+    expect(mesh.position.x).toBeCloseTo(200 + params.width / 2, 6);
   });
 
   it('throws when there are no gates AND arena.length <= 0', () => {
@@ -91,6 +95,8 @@ describe('createFinishLine', () => {
     // on it.
     const arena = makeArena();
     const mesh = createFinishLine(arena, { textureFactory: stubTexture });
-    expect(mesh.position.x).toBe(arena.gates[arena.gates.length - 1].x);
+    const params = (mesh.geometry as THREE.PlaneGeometry).parameters;
+    const lastGate = arena.gates[arena.gates.length - 1];
+    expect(mesh.position.x).toBeCloseTo(lastGate.x + params.width / 2, 6);
   });
 });

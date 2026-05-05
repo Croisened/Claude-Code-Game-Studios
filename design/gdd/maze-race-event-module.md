@@ -169,6 +169,25 @@ who replays the same seed sees the same robot win the same race.
     pushes -X.
   - Push is integrated into pose `(x, z)` over `dt` along with the
     primary motion step.
+- **R14a.** **Forward-block awareness.** In the same neighbor scan
+  as the separation push, check whether each active neighbor sits
+  in the robot's motion direction:
+  - Decompose the pose-to-neighbor vector into a forward component
+    (along `(nx, nz)`) and a lateral component.
+  - If the forward component is in `(0, forwardBlockDist)` AND the
+    lateral component is within `forwardBlockLateralRadius`, the
+    neighbor is "blocking."
+  - The robot's forward step is scaled by
+    `min(blockFactor) = forwardComponent / forwardBlockDist`
+    across all blocking neighbors. At touching distance the step
+    goes to zero (full stop); at the far edge of `forwardBlockDist`
+    the step is unchanged.
+  - Effect: robots queue through corridors instead of piling into
+    each other. The separation push still pushes them apart
+    laterally; this rule adds the missing "wait for the lane to
+    clear" behaviour.
+  - Determinism: pose state is read in id-ascending order matching
+    the engine iteration. No `rng()` consumed.
 - **R15.** Wall-corridor clamp: after motion + push, look up the
   cell the robot is in (`worldToCellId`) and clamp pose to within
   `(cellSize/2 - wallMargin)` of the cell center along any axis with
@@ -343,9 +362,11 @@ if cell.wallMask & E: pose.x = min(pose.x, cell.x + half)
 | `cautionScale` | yes | 0.2 | 0–0.5 | How much Doubter slows a robot. |
 | `chaosScale` | yes | 0.15 | 0–0.5 | Per-tick jitter amplitude scaled by Degen. |
 | `cellArrivalRadius` | yes | 0.6 | 0.4–0.8 | Smaller = sharper corners. |
-| `separationRadius` | yes | 1.4 | 1.0–2.5 | Boids push range. |
-| `separationForceMps` | yes | 5.0 | 2–10 | Push magnitude at zero distance. |
+| `separationRadius` | yes | 1.8 | 1.0–2.5 | Boids push range; tuned to match `robotScale = 2` visual diameter. |
+| `separationForceMps` | yes | 7.0 | 2–10 | Push magnitude at zero distance. |
 | `separationCoincidentEps` | yes | 0.05 | 0–0.1 | Coincident-pair threshold. |
+| `forwardBlockDist` | yes | 2.4 | 1–5 | Forward distance at which a blocking neighbor begins to slow the robot. |
+| `forwardBlockLateralRadius` | yes | 1.0 | 0.5–2 | Lateral lane half-width for forward-block detection. |
 | `wallMargin` | yes | 0.6 | 0.4–0.8 | Corridor clearance from wall. |
 | `mistakeMaxRate` | yes | 0.6 | 0.3–0.7 | Cap on per-junction wrong-turn rate. |
 | `finishGraceTicks` | yes | 4 | 0–60 | **Lever 2.** Ticks after first finish during which co-finishers are still emitted. |
